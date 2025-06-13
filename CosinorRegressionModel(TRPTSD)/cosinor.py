@@ -88,8 +88,40 @@ def fit_cosinor_with_cv(t_window, y_window, candidate_harmonics):
 
     return primary_amplitude, primary_acrophase, daily_r2
 
+def extract_zscored_LFP(patient_data, center_date, window_days=5):
+    """
+    Extract and z-score LFP data for a given window around a center date.
+    
+    Parameters:
+    -----------
+    patient_data : dict
+        Dictionary containing LFP data and timestamps
+    center_date : datetime
+        Center date for the window
+    window_days : int
+        Number of days before and after center_date to include
+        
+    Returns:
+    --------
+    np.ndarray
+        Z-scored LFP values for the specified window
+    """
+    # Calculate window boundaries
+    start_date = center_date - np.timedelta64(window_days, 'D')
+    end_date = center_date + np.timedelta64(window_days, 'D')
+    
+    # Extract data within window
+    mask = (patient_data['timestamps'] >= start_date) & (patient_data['timestamps'] <= end_date)
+    lfp_window = patient_data['lfp'][mask]
+    
+    # Z-score the data
+    return (lfp_window - np.mean(lfp_window)) / np.std(lfp_window)
+
+# Initialize daily metrics dictionary
+daily_metrics = {}
+
 # Example of looping over sliding windows:
-all_dates = [...]   # array of “center day” timestamps
+all_dates = np.arange('2023-01-01', '2023-12-31', dtype='datetime64[D]')  # Example dates
 for D in all_dates:
     # Extract t_window (0 to 5*24 hours in 10-min steps) and y_window for days [D-2 ... D+2]
     t_window = np.linspace(0, 5*24, 5*24*6)  # 720 points (in hours)
