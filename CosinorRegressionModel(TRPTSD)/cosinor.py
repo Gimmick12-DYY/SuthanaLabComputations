@@ -119,6 +119,7 @@ def extract_zscored_LFP(patient_data, center_date, window_days=5):
 
 # Initialize daily metrics dictionary
 daily_metrics = {}
+patient_data = '' # Data input
 
 # Example of looping over sliding windows:
 all_dates = np.arange('2023-01-01', '2023-12-31', dtype='datetime64[D]')  # Example dates
