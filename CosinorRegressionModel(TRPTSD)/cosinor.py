@@ -2,6 +2,8 @@ import numpy as np
 from statsmodels.api import OLS
 from sklearn.model_selection import KFold
 from sklearn.metrics import r2_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def design_matrix(t_hours, harmonics, period=24.0):
     """
@@ -116,6 +118,29 @@ def extract_zscored_LFP(patient_data, center_date, window_days=5):
     
     # Z-score the data
     return (lfp_window - np.mean(lfp_window)) / np.std(lfp_window)
+
+def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'):
+    """
+    Plot a heatmap of z-scored LFP power with optional stimulus event annotation.
+    
+    Parameters:
+    - lfp_matrix: 2D np.ndarray (days x time bins)
+    - stimulus_days: list of int, days when stimulus occurred
+    - vmin, vmax: color scale limits
+    - cmap: colormap
+    """
+    plt.figure(figsize=(12, 6))
+    ax = sns.heatmap(lfp_matrix, cmap=cmap, vmin=vmin, vmax=vmax, cbar_kws={'label': 'Z-scored LFP Power (9-12 Hz)'})
+    plt.xlabel('Time of Day (bins)')
+    plt.ylabel('Days')
+    plt.title('LFP Power Heatmap')
+    if stimulus_days is not None:
+        for i, day in enumerate(stimulus_days):
+            plt.axhline(day, color='magenta', linestyle='--', linewidth=2, label='Stimulus' if i == 0 else "")
+        handles, labels = ax.get_legend_handles_labels()
+        if 'Stimulus' not in labels:
+            plt.legend(['Stimulus'], loc='upper right')
+    plt.show()
 
 # Initialize daily metrics dictionary
 daily_metrics = {}
