@@ -121,7 +121,7 @@ def extract_zscored_LFP(patient_data, center_date, window_days=5):
 
 def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'):
     """
-    Plot a heatmap of z-scored LFP power with optional stimulus event annotation.
+    Plot a heatmap of z-scored LFP power with optional stimulus event annotation. This is similar to what is used in the previous study.
     
     Parameters:
     - lfp_matrix: 2D np.ndarray (days x time bins)
@@ -147,7 +147,7 @@ daily_metrics = {}
 patient_data = '' # Data input
 
 # Example of looping over sliding windows:
-all_dates = np.arange('2023-01-01', '2023-12-31', dtype='datetime64[D]')  # Example dates
+all_dates = np.arange('2020-01-01', '2023-12-31', dtype='datetime64[D]')  # Example dates
 for D in all_dates:
     # Extract t_window (0 to 5*24 hours in 10-min steps) and y_window for days [D-2 ... D+2]
     t_window = np.linspace(0, 5*24, 5*24*6)  # 720 points (in hours)
