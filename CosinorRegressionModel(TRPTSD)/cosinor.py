@@ -118,6 +118,9 @@ def reshape_to_matrix(df):
     df['date'] = pd.to_datetime(df['Region start time']).dt.date
     df['hour'] = pd.to_datetime(df['Region start time']).dt.hour
     matrix = df.pivot(index='date', columns='hour', values='Pattern A Channel 2')
+    # Interpolate missing values along the row (hours), then fill any remaining NaNs with the row mean
+    matrix = matrix.interpolate(axis=1, limit_direction='both')
+    matrix = matrix.apply(lambda row: row.fillna(row.mean()), axis=1)
     return matrix.values  # shape: (n_days, 24)
 
 def load_and_process_lfp_data(pre_path, post_path):
