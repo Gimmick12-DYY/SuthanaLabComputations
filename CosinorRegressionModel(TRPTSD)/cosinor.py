@@ -4,6 +4,7 @@ from sklearn.model_selection import KFold
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 
 def design_matrix(t_hours, harmonics, period=24.0):
     """
@@ -90,35 +91,6 @@ def fit_cosinor_with_cv(t_window, y_window, candidate_harmonics):
 
     return primary_amplitude, primary_acrophase, daily_r2
 
-def extract_zscored_LFP(patient_data, center_date, window_days=5):
-    """
-    Extract and z-score LFP data for a given window around a center date.
-    
-    Parameters:
-    -----------
-    patient_data : dict
-        Dictionary containing LFP data and timestamps
-    center_date : datetime
-        Center date for the window
-    window_days : int
-        Number of days before and after center_date to include
-        
-    Returns:
-    --------
-    np.ndarray
-        Z-scored LFP values for the specified window
-    """
-    # Calculate window boundaries
-    start_date = center_date - np.timedelta64(window_days, 'D')
-    end_date = center_date + np.timedelta64(window_days, 'D')
-    
-    # Extract data within window
-    mask = (patient_data['timestamps'] >= start_date) & (patient_data['timestamps'] <= end_date)
-    lfp_window = patient_data['lfp'][mask]
-    
-    # Z-score the data
-    return (lfp_window - np.mean(lfp_window)) / np.std(lfp_window)
-
 def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'):
     """
     Plot a heatmap of z-scored LFP power with optional stimulus event annotation. This is similar to what is used in the previous study.
@@ -142,22 +114,59 @@ def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'
             plt.legend(['Stimulus'], loc='upper right')
     plt.show()
 
+def reshape_to_matrix(df):
+    df['date'] = pd.to_datetime(df['Region start time']).dt.date
+    df['hour'] = pd.to_datetime(df['Region start time']).dt.hour
+    matrix = df.pivot(index='date', columns='hour', values='Pattern A Channel 2')
+    return matrix.values  # shape: (n_days, 24)
+
+def load_and_process_lfp_data(pre_path, post_path):
+    # Load CSVs
+    pre_df = pd.read_csv(pre_path)
+    post_df = pd.read_csv(post_path)
+    # Reshape to (days, 24)
+    pre_matrix = reshape_to_matrix(pre_df)
+    post_matrix = reshape_to_matrix(post_df)
+    # Combine for visualization
+    combined_matrix = np.vstack([pre_matrix, post_matrix])
+    stimulus_day = pre_matrix.shape[0]
+    # Plot heatmap with stimulus event
+    plot_lfp_heatmap(combined_matrix, stimulus_days=[stimulus_day])
+    return pre_matrix, post_matrix, combined_matrix, stimulus_day
+
+def run_daily_cosinor_analysis(matrix):
+    results = []
+    n_days, n_hours = matrix.shape
+    t_window = np.arange(n_hours)  # hours in a day
+    cand_harmonics = [1, 2]  # 24h & 12h
+    for i in range(n_days):
+        y_window = (matrix[i] - np.mean(matrix[i])) / np.std(matrix[i])  # z-score per day
+        amp, phase, r2 = fit_cosinor_with_cv(t_window, y_window, cand_harmonics)
+        results.append({'day': i, 'amplitude': amp, 'acrophase': phase, 'R2': r2})
+    return results
+
 # Initialize daily metrics dictionary
 daily_metrics = {}
-patient_data = '' # Data input
 
 # Example of looping over sliding windows:
 all_dates = np.arange('2020-01-01', '2023-12-31', dtype='datetime64[D]')  # Example dates
 for D in all_dates:
     # Extract t_window (0 to 5*24 hours in 10-min steps) and y_window for days [D-2 ... D+2]
     t_window = np.linspace(0, 5*24, 5*24*6)  # 720 points (in hours)
-    y_window = extract_zscored_LFP(patient_data, center_date=D, window_days=5)
     cand_harmonics = [1, 2]  # e.g. 24h & 12h components
-    amp, phase, r2 = fit_cosinor_with_cv(t_window, y_window, cand_harmonics)
 
     # Store daily metrics:
-    daily_metrics[D] = {
-        "amplitude": amp,
-        "acrophase": phase,
-        "R2": r2
-    }
+    # daily_metrics[D] = {
+    #     "amplitude": amp,
+    #     "acrophase": phase,
+    #     "R2": r2
+    # }
+
+# Example usage (uncomment to run):
+# pre_matrix, post_matrix, combined_matrix, stimulus_day = load_and_process_lfp_data(
+#     'CosinorRegressionModel(TRPTSD)/data/RNS_G_Pre_output.csv',
+#     'CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv')
+# pre_results = run_daily_cosinor_analysis(pre_matrix)
+# post_results = run_daily_cosinor_analysis(post_matrix)
+# print('Pre-stimulus daily cosinor results:', pre_results)
+# print('Post-stimulus daily cosinor results:', post_results)
