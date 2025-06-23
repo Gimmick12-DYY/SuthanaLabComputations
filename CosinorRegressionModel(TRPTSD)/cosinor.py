@@ -93,22 +93,22 @@ def fit_cosinor_with_cv(t_window, y_window, candidate_harmonics):
 
 def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'):
     """
-    Plot a heatmap of z-scored LFP power with optional stimulus event annotation. This is similar to what is used in the previous study.
-    
+    Plot a heatmap of z-scored LFP power with days on x-axis and time of day on y-axis.
     Parameters:
     - lfp_matrix: 2D np.ndarray (days x time bins)
     - stimulus_days: list of int, days when stimulus occurred
     - vmin, vmax: color scale limits
     - cmap: colormap
     """
-    plt.figure(figsize=(12, 6))
-    ax = sns.heatmap(lfp_matrix, cmap=cmap, vmin=vmin, vmax=vmax, cbar_kws={'label': 'Z-scored LFP Power (9-12 Hz)'})
-    plt.xlabel('Time of Day (bins)')
-    plt.ylabel('Days')
-    plt.title('LFP Power Heatmap')
+    plt.figure(figsize=(14, 6))
+    # Transpose so days are x, time of day is y
+    ax = sns.heatmap(lfp_matrix.T, cmap=cmap, vmin=vmin, vmax=vmax, cbar_kws={'label': 'Z-scored LFP Power (9-12 Hz)'})
+    plt.xlabel('Days')
+    plt.ylabel('Time of Day (hour)')
+    plt.title('LFP Power Heatmap (Days x Time of Day)')
     if stimulus_days is not None:
         for i, day in enumerate(stimulus_days):
-            plt.axhline(day, color='magenta', linestyle='--', linewidth=2, label='Stimulus' if i == 0 else "")
+            plt.axvline(day, color='magenta', linestyle='--', linewidth=2, label='Stimulus' if i == 0 else "")
         handles, labels = ax.get_legend_handles_labels()
         if 'Stimulus' not in labels:
             plt.legend(['Stimulus'], loc='upper right')
@@ -173,3 +173,34 @@ for D in all_dates:
 # post_results = run_daily_cosinor_analysis(post_matrix)
 # print('Pre-stimulus daily cosinor results:', pre_results)
 # print('Post-stimulus daily cosinor results:', post_results)
+
+def plot_metric_comparison(pre_results, post_results, metric, ylabel):
+    """
+    Plot line plot and boxplot for a given metric (amplitude, acrophase, R2).
+    """
+    import matplotlib.pyplot as plt
+    pre_vals = [r[metric] for r in pre_results]
+    post_vals = [r[metric] for r in post_results]
+    fig, axs = plt.subplots(1, 2, figsize=(14, 4))
+    # Line plot
+    axs[0].plot(pre_vals, label='Pre', color='blue')
+    axs[0].plot(range(len(pre_vals), len(pre_vals)+len(post_vals)), post_vals, label='Post', color='orange')
+    axs[0].axvline(len(pre_vals), color='magenta', linestyle='--', label='Stimulus')
+    axs[0].set_xlabel('Day')
+    axs[0].set_ylabel(ylabel)
+    axs[0].set_title(f'Daily {ylabel}')
+    axs[0].legend()
+    # Boxplot
+    axs[1].boxplot([pre_vals, post_vals], labels=['Pre', 'Post'])
+    axs[1].set_ylabel(ylabel)
+    axs[1].set_title(f'{ylabel} Distribution')
+    plt.tight_layout()
+    plt.show()
+
+def print_metric_summary(pre_results, post_results, metric, label):
+    import numpy as np
+    pre_vals = np.array([r[metric] for r in pre_results])
+    post_vals = np.array([r[metric] for r in post_results])
+    print(f"{label} Summary:")
+    print(f"  Pre:  mean={np.nanmean(pre_vals):.3f}, std={np.nanstd(pre_vals):.3f}, min={np.nanmin(pre_vals):.3f}, max={np.nanmax(pre_vals):.3f}")
+    print(f"  Post: mean={np.nanmean(post_vals):.3f}, std={np.nanstd(post_vals):.3f}, min={np.nanmin(post_vals):.3f}, max={np.nanmax(post_vals):.3f}")
