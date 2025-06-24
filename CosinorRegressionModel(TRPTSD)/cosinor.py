@@ -114,13 +114,16 @@ def plot_lfp_heatmap(lfp_matrix, stimulus_days=None, vmin=-1, vmax=7, cmap='jet'
             plt.legend(['Stimulus'], loc='upper right')
     plt.show()
 
-def reshape_to_matrix(df):
+def reshape_to_matrix(df, min_valid_hours=12):
     df['date'] = pd.to_datetime(df['Region start time']).dt.date
     df['hour'] = pd.to_datetime(df['Region start time']).dt.hour
     matrix = df.pivot(index='date', columns='hour', values='Pattern A Channel 2')
-    # Interpolate missing values along the row (hours), then fill any remaining NaNs with the row mean
+    # Interpolate missing values along the row (hours)
     matrix = matrix.interpolate(axis=1, limit_direction='both')
-    matrix = matrix.apply(lambda row: row.fillna(row.mean()), axis=1)
+    # Drop days with too many missing values
+    matrix = matrix[matrix.count(axis=1) >= min_valid_hours]
+    # Fill any remaining NaNs in a row with 0
+    matrix = matrix.fillna(0)
     return matrix.values  # shape: (n_days, 24)
 
 def load_and_process_lfp_data(pre_path, post_path):
