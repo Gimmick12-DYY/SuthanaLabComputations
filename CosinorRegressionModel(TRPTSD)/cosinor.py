@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from CosinorPy import cosinor as cpy
+from CosinorPy import file_parser, cosinor
 
 def load_and_reshape(path, event_col, min_valid_hours=12):
-    df = pd.read_csv(path)
-    df['datetime'] = pd.to_datetime(df['Region start time'])
+    df = file_parser.read_csv(path)
     df['date'] = df['datetime'].dt.date
     df['hour'] = df['datetime'].dt.hour
     # Pivot to days x hours
@@ -20,7 +19,7 @@ def daily_cosinor(matrix):
     for i, (date, row) in enumerate(matrix.iterrows()):
         time = np.arange(len(row))
         values = row.values
-        fit = cpy.fit_single_component(time, values, period=24)
+        cosinor.periodogram_df(date)
         r2 = fit['r2']
         results.append({'day': i, 'date': date, 'R2': r2})
     return pd.DataFrame(results)
