@@ -4,9 +4,12 @@ import matplotlib.pyplot as plt
 from CosinorPy import file_parser, cosinor
 
 def load_and_reshape(path, event_col, min_valid_hours=12):
-    df = file_parser.read_csv(path)
-    df['date'] = df['datetime'].dt.date
-    df['hour'] = df['datetime'].dt.hour
+    """Function used to parser the data using the file_parser method from the CosinorPy package"""
+    df = pd.read_csv(path)
+    print("Available columns:", df.columns)
+    df['Region start time'] = pd.to_datetime(df['Region start time'])
+    df['date'] = df['Region start time'].dt.date
+    df['hour'] = df['Region start time'].dt.hour
     # Pivot to days x hours
     matrix = df.pivot(index='date', columns='hour', values=event_col)
     matrix = matrix.interpolate(axis=1, limit_direction='both')
