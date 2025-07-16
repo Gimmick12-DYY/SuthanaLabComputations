@@ -1,7 +1,7 @@
 # SuthanaLabComputations
 This repository contains the projects developed within the Suthana Lab Group at Duke University:
 
-1. **TR-PTSD/**: Construction of a Cosinor Regression Model that analyzes on the daily recordings of PTSD patients.
+1. **TR-PTSD/**: Construction of a Cosinor Regression Model that analyzes the daily recordings of TR-PTSD patients. The model utilizes a multiple-component Cosine Linear Regression algorithm to fit the daily rhythmic data.  
    
 2. **/**: 
 
