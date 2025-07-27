@@ -11,7 +11,6 @@ Key files:
    - `compare_csv_rows.py` – Script for comparing and validating CSV data rows across datasets.
    - `matrix_analysis.py` – Additional analysis tools based on matrix logic.
    - `cosinordemo/` – Demo folder for CosinorPy-based baseline testing.
-   - `.DS_Store` – macOS-specific system file (safe to ignore or remove).
    
 3. **/**: 
 
