@@ -8,15 +8,11 @@
 # The script also assumes that the data is not autocorrelated
 # The script also assumes that the data is not heteroscedastic
 import pandas as pd
+import numpy as np
 import pymc as pm
 import arviz as az
 import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from numpy.ma import add
-from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
+
 np.seterr(divide='ignore')
 import scipy.signal as signal
 import scipy.stats as stats
