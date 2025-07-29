@@ -1,12 +1,19 @@
-# Bayesian Model for Cosinor Parameters
-# This script performs Bayesian inference on the cosinor parameters (amplitude, acrophase, and mesor)
-# It uses PyMC3 to fit a normal distribution to the parameters and provides posterior summaries and credible intervals
-# The script also includes a function to run Bayesian inference for each parameter and plot the results
-# The script assumes that the data is stored in a CSV file called 'cosinor_parameters.csv'
-# The script also assumes that the data is normally distributed
-# The script also assumes that the data is independent and identically distributed
-# The script also assumes that the data is not autocorrelated
-# The script also assumes that the data is not heteroscedastic
+"""
+Bayesian Group-Level Analysis of Cosinor Parameters
+
+This script performs Bayesian inference on group-level cosinor parameters (amplitude, acrophase, mesor)
+using PyMC. It fits a normal distribution to each parameter across subjects or samples, estimates the
+posterior distributions for the group mean and standard deviation, and visualizes the results.
+
+Inputs:
+    - Cosinor model results from pre- and post-condition data (using CosinorPy)
+    - Parameters analyzed: mean(amplitude), mean(acrophase), mean(mesor)
+
+Outputs:
+    - Posterior summaries and credible intervals for group mean and standard deviation of each parameter
+    - Posterior distribution plots for each parameter
+"""
+
 import pandas as pd
 import numpy as np
 import pymc as pm
@@ -14,28 +21,15 @@ import arviz as az
 import matplotlib.pyplot as plt
 from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
 
-
 np.seterr(divide='ignore')
-import scipy.signal as signal
-import scipy.stats as stats
-import matplotlib.pyplot as plt
-import statsmodels
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
-import statsmodels.stats.multitest as multi
-from scipy.optimize import curve_fit
-from statsmodels.sandbox.regression.predstd import wls_prediction_std
-from scipy.stats import percentileofscore
-from scipy.stats import circstd, circmean
-import copy
-import itertools
-from random import sample
-import os
-import copy
-from CosinorPy.helpers import df_add_row
 
+# --- Data Loading and Preparation ---
 def load_data(path):
-    """Function used to parser the data using the file_parser method from the CosinorPy package"""
+    """
+    Load and preprocess cosinor data from a CSV file.
+    Assumes the file contains a 'Region start time' column and a 'Pattern A Channel 2' column.
+    Returns a DataFrame with added 'date' and 'hour' columns.
+    """
     df = pd.read_csv(path)
     df['Region start time'] = pd.to_datetime(df['Region start time'])
     df['date'] = df['Region start time'].dt.date
@@ -43,73 +37,71 @@ def load_data(path):
     df = df.drop('Unnamed: 0', axis=1)
     return df
 
+# Load pre- and post-condition data (update paths as needed)
 pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
 post_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
 
+# --- Data Preparation Functions for CosinorPy ---
 def prepare_data_pre(df):
-    """Function used to prepare the data for Cosinor Regression"""
+    """
+    Prepare pre-condition data for cosinor regression.
+    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns.
+    """
     df1 = df.copy()
-    
-    # Ensure date column is in datetime format
     df1['date'] = pd.to_datetime(df1['date'])
-
-    # Compute 'week' column by calculating the number of days since the start date
     start_date = df1['date'].min()
     df1['week'] = ((df1['date'] - start_date).dt.days // 7) + 1
     df1['week'] = df1['week'].apply(lambda x: f"week{x}")
-
-    # Add remaining columns
     df1['test'] = df1['week'].astype(str)
     df1['x'] = df1['hour']
     df1['y'] = df1["Pattern A Channel 2"]
-
     return df1
 
 def prepare_data_post(df):
-    """Function used to prepare the data for Cosinor Regression"""
+    """
+    Prepare post-condition data for cosinor regression.
+    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns.
+    """
     df1 = df.copy()
-    
-    # Ensure date column is in datetime format
     df1['date'] = pd.to_datetime(df1['date'])
-
-    # Compute 'week' column by calculating the number of days since the start date
     start_date = df1['date'].min()
     df1['week'] = ((df1['date'] - start_date).dt.days // 7) + 6
     df1['week'] = df1['week'].apply(lambda x: f"week{x}")
-
-    # Add remaining columns
     df1['test'] = df1['week'].astype(str)
     df1['x'] = df1['hour']
     df1['y'] = df1["Pattern A Channel 2"]
-
     return df1
 
-df_results_pre_data = cosinor.population_fit_group(prepare_data_pre(pre_data), n_components = [1,2,3], period=24, plot=False)
-df_best_models_pre_data = cosinor.get_best_models_population(prepare_data_pre(pre_data), df_results_pre_data, n_components = [1,2,3])
+# --- Cosinor Model Fitting (using CosinorPy) ---
+# Fit population models for pre- and post-condition data
+# n_components = [1,2,3] means fitting models with 1, 2, and 3 harmonics
+# period=24 for 24-hour rhythm
+
+df_results_pre_data = cosinor.population_fit_group(prepare_data_pre(pre_data), n_components=[1,2,3], period=24, plot=False)
+df_best_models_pre_data = cosinor.get_best_models_population(prepare_data_pre(pre_data), df_results_pre_data, n_components=[1,2,3])
 cosinor.plot_df_models_population(prepare_data_pre(pre_data), df_best_models_pre_data)
-df_best_models_pre_data
 
-df_results_post_data = cosinor.population_fit_group(prepare_data_post(post_data), n_components = [1,2,3], period=24, plot=False)
-df_best_models_post_data = cosinor.get_best_models_population(prepare_data_post(pre_data), df_results_post_data, n_components = [1,2,3])
+df_results_post_data = cosinor.population_fit_group(prepare_data_post(post_data), n_components=[1,2,3], period=24, plot=False)
+df_best_models_post_data = cosinor.get_best_models_population(prepare_data_post(pre_data), df_results_post_data, n_components=[1,2,3])
 cosinor.plot_df_models_population(prepare_data_post(post_data), df_best_models_post_data)
-df_best_models_post_data
 
-df_best_models_pre_data
-df_best_models_post_data
+# Combine best models from pre- and post-condition for group-level analysis
+# (You may want to adjust this depending on your analysis goals)
 test_statistics = pd.concat([df_best_models_pre_data, df_best_models_post_data], axis=0, ignore_index=True)
-test_statistics
 
-
-# Load the cosinor parameters DataFrame
+# --- Bayesian Group-Level Analysis ---
+# Extract cosinor parameters for Bayesian analysis
 params_df = test_statistics[['mean(amplitude)', 'mean(acrophase)', 'mean(mesor)']].copy()
-
-# Extract the relevant columns
 amplitude = params_df['mean(amplitude)'].values
 acrophase = params_df['mean(acrophase)'].values
 mesor = params_df['mean(mesor)'].values
 
-# Function to run Bayesian inference for a parameter
 def bayesian_group_inference(data, param_name):
+    """
+    Perform Bayesian inference for a group-level cosinor parameter.
+    Fits a normal distribution to the data and samples the posterior for mean (mu) and std (sigma).
+    Plots and prints the posterior distributions and credible intervals.
+    """
     with pm.Model() as model:
         mu = pm.Normal('mu', mu=data.mean(), sigma=10)
         sigma = pm.HalfNormal('sigma', sigma=10)
@@ -121,7 +113,7 @@ def bayesian_group_inference(data, param_name):
     plt.suptitle(f'Posterior of {param_name}')
     plt.show()
 
-# Run Bayesian inference for each parameter
+# Run Bayesian inference for each cosinor parameter
 bayesian_group_inference(amplitude, 'mean(amplitude)')
 bayesian_group_inference(acrophase, 'mean(acrophase)')
 bayesian_group_inference(mesor, 'mean(mesor)')
