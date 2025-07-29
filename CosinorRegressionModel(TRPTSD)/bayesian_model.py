@@ -1,7 +1,40 @@
+# Bayesian Model for Cosinor Parameters
+# This script performs Bayesian inference on the cosinor parameters (amplitude, acrophase, and mesor)
+# It uses PyMC3 to fit a normal distribution to the parameters and provides posterior summaries and credible intervals
+# The script also includes a function to run Bayesian inference for each parameter and plot the results
+# The script assumes that the data is stored in a CSV file called 'cosinor_parameters.csv'
+# The script also assumes that the data is normally distributed
+# The script also assumes that the data is independent and identically distributed
+# The script also assumes that the data is not autocorrelated
+# The script also assumes that the data is not heteroscedastic
 import pandas as pd
 import pymc as pm
 import arviz as az
 import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from numpy.ma import add
+from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
+np.seterr(divide='ignore')
+import scipy.signal as signal
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+import statsmodels
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import statsmodels.stats.multitest as multi
+from scipy.optimize import curve_fit
+from statsmodels.sandbox.regression.predstd import wls_prediction_std
+from scipy.stats import percentileofscore
+from scipy.stats import circstd, circmean
+import copy
+import itertools
+from random import sample
+import os
+import copy
+from CosinorPy.helpers import df_add_row
 
 # Load the cosinor parameters DataFrame
 params_df = pd.read_csv('cosinor_parameters.csv')
