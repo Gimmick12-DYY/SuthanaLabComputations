@@ -12,6 +12,8 @@ import numpy as np
 import pymc as pm
 import arviz as az
 import matplotlib.pyplot as plt
+from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
+
 
 np.seterr(divide='ignore')
 import scipy.signal as signal
@@ -41,8 +43,8 @@ def load_data(path):
     df = df.drop('Unnamed: 0', axis=1)
     return df
 
-pre_data = load_data("data/RNS_G_Pre_output.csv")
-post_data = load_data("data/RNS_G_M1_output.csv")
+pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
+post_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
 
 def prepare_data_pre(df):
     """Function used to prepare the data for Cosinor Regression"""
