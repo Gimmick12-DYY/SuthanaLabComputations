@@ -6,10 +6,10 @@ using PyMC. It fits a normal distribution to each parameter across subjects or s
 posterior distributions for the group mean and standard deviation, and visualizes the results.
 
 Inputs:
-    - Cosinor model results from pre- and post-condition data (using CosinorPy)
+    - Cosinor model results from pre- and post-condition data (using CosinorPy module)
     - Parameters analyzed: mean(amplitude), mean(acrophase), mean(mesor)
 
-Outputs:
+Outputs (PyMC):
     - Posterior summaries and credible intervals for group mean and standard deviation of each parameter
     - Posterior distribution plots for each parameter
 """
