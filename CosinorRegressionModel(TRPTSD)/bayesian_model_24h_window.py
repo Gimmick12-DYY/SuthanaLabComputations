@@ -42,34 +42,13 @@ pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/C
 post_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
 
 # --- Data Preparation Functions for CosinorPy ---
-def prepare_data_pre(df):
-    """
-    Prepare pre-condition data for cosinor regression.
-    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns.
-    """
+def prepare_data(df):
+    """Function used to prepare the data for Cosinor Regression"""
     df1 = df.copy()
-    df1['date'] = pd.to_datetime(df1['date'])
-    start_date = df1['date'].min()
-    df1['week'] = ((df1['date'] - start_date).dt.days // 7) + 1
-    df1['week'] = df1['week'].apply(lambda x: f"week{x}")
-    df1['test'] = df1['week'].astype(str)
-    df1['x'] = df1['hour']
-    df1['y'] = df1["Pattern A Channel 2"]
-    return df1
-
-def prepare_data_post(df):
-    """
-    Prepare post-condition data for cosinor regression.
-    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns.
-    """
-    df1 = df.copy()
-    df1['date'] = pd.to_datetime(df1['date'])
-    start_date = df1['date'].min()
-    df1['week'] = ((df1['date'] - start_date).dt.days // 7) + 6
-    df1['week'] = df1['week'].apply(lambda x: f"week{x}")
-    df1['test'] = df1['week'].astype(str)
-    df1['x'] = df1['hour']
-    df1['y'] = df1["Pattern A Channel 2"]
+    df1["test"] = df1["date"].astype(str)
+    df1["x"] = df1["hour"]
+    df1["y"] = df1["Pattern A Channel 2"]
+    
     return df1
 
 # --- Cosinor Model Fitting (using CosinorPy) ---
