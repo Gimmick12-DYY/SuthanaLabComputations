@@ -56,13 +56,13 @@ def prepare_data(df):
 # n_components = [1,2,3] means fitting models with 1, 2, and 3 harmonics
 # period=24 for 24-hour rhythm
 
-df_results_pre_data = cosinor.population_fit_group(prepare_data_pre(pre_data), n_components=[1,2,3], period=24, plot=False)
-df_best_models_pre_data = cosinor.get_best_models_population(prepare_data_pre(pre_data), df_results_pre_data, n_components=[1,2,3])
-cosinor.plot_df_models_population(prepare_data_pre(pre_data), df_best_models_pre_data)
+df_results_pre_data = cosinor.population_fit_group(prepare_data(pre_data), n_components = [1,2,3], period=24, plot=False)
+df_best_models_pre_data = cosinor.get_best_models_population(prepare_data(pre_data), df_results_pre_data, n_components = [1,2,3])
+cosinor.plot_df_models_population(prepare_data(pre_data), df_best_models_pre_data)
 
-df_results_post_data = cosinor.population_fit_group(prepare_data_post(post_data), n_components=[1,2,3], period=24, plot=False)
-df_best_models_post_data = cosinor.get_best_models_population(prepare_data_post(pre_data), df_results_post_data, n_components=[1,2,3])
-cosinor.plot_df_models_population(prepare_data_post(post_data), df_best_models_post_data)
+df_results_post_data = cosinor.population_fit_group(prepare_data(post_data), n_components = [1,2,3], period=24, plot=False)
+df_best_models_post_data = cosinor.get_best_models_population(prepare_data(pre_data), df_results_post_data, n_components = [1,2,3])
+cosinor.plot_df_models_population(prepare_data(post_data), df_best_models_post_data)
 
 # Combine best models from pre- and post-condition for group-level analysis
 # (You may want to adjust this depending on your analysis goals)
