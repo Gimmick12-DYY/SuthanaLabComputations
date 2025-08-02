@@ -38,7 +38,7 @@ def load_data(path):
     return df
 
 # Load pre- and post-condition data (update paths as needed)
-pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
+pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_Pre_output.csv")
 post_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_M1_output.csv")
 
 # --- Data Preparation Functions for CosinorPy ---
