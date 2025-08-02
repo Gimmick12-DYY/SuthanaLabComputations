@@ -88,11 +88,25 @@ pre_amplitude = pre_params['mean(amplitude)'].values
 pre_acrophase = pre_params['mean(acrophase)'].values
 pre_mesor = pre_params['mean(mesor)'].values
 
+print(f"Pre-condition data shape: {df_best_models_pre.shape}")
+print(f"Pre-condition parameters: {len(pre_amplitude)} samples")
+print(f"Pre amplitude range: {pre_amplitude.min():.3f} to {pre_amplitude.max():.3f}")
+
 # Post-condition parameters
 post_params = df_best_models_post[['mean(amplitude)', 'mean(acrophase)', 'mean(mesor)']].copy()
 post_amplitude = post_params['mean(amplitude)'].values
 post_acrophase = post_params['mean(acrophase)'].values
 post_mesor = post_params['mean(mesor)'].values
+
+print(f"Post-condition data shape: {df_best_models_post.shape}")
+print(f"Post-condition parameters: {len(post_amplitude)} samples")
+print(f"Post amplitude range: {post_amplitude.min():.3f} to {post_amplitude.max():.3f}")
+
+# Check if post data is empty or has issues
+if len(post_amplitude) == 0:
+    print("WARNING: Post-condition data is empty!")
+elif np.any(np.isnan(post_amplitude)):
+    print("WARNING: Post-condition data contains NaN values!")
 
 # --- Bayesian Analysis Functions ---
 def bayesian_group_inference(data, param_name, condition):
