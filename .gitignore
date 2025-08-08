@@ -1,2 +1,3 @@
 # Ignore all files in the data/ folder
 CosinorRegressionModel(TRPTSD)/data/ 
+CosinorRegressionModel(TRPTSD)/plots/ 
