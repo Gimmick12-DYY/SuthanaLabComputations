@@ -19,9 +19,13 @@ import numpy as np
 import pymc as pm
 import arviz as az
 import matplotlib.pyplot as plt
+import os
 from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
 
 np.seterr(divide='ignore')
+
+# Create plots directory if it doesn't exist
+os.makedirs('plots/24h_window', exist_ok=True)
 
 # --- Data Loading and Preparation ---
 def load_data(path):
@@ -59,13 +63,13 @@ def prepare_data(df):
 df_results_pre_data = cosinor.population_fit_group(prepare_data(pre_data), n_components = [1,2,3], period=24, plot=False)
 df_best_models_pre_data = cosinor.get_best_models_population(prepare_data(pre_data), df_results_pre_data, n_components = [1,2,3])
 cosinor.plot_df_models_population(prepare_data(pre_data), df_best_models_pre_data)
-plt.savefig('plots/24h_window/cosinor_population_pre_24h.png', dpi=300, bbox_inches='tight')
+plt.savefig('CosinorRegressionModel(TRPTSD)/plots/24h_window/cosinor_population_pre_24h.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 df_results_post_data = cosinor.population_fit_group(prepare_data(post_data), n_components = [1,2,3], period=24, plot=False)
 df_best_models_post_data = cosinor.get_best_models_population(prepare_data(pre_data), df_results_post_data, n_components = [1,2,3])
 cosinor.plot_df_models_population(prepare_data(post_data), df_best_models_post_data)
-plt.savefig('plots/24h_window/cosinor_population_post_24h.png', dpi=300, bbox_inches='tight')
+plt.savefig('CosinorRegressionModel(TRPTSD)/plots/24h_window/cosinor_population_post_24h.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 # Combine best models from pre- and post-condition for group-level analysis
@@ -111,7 +115,7 @@ def bayesian_group_inference(data, param_name, condition):
     
     # Save the plot with descriptive filename
     param_clean = param_name.replace('(', '').replace(')', '').replace('mean', '').strip()
-    filename = f"plots/24h_window/posterior_{param_clean}_{condition.lower()}_24h_window.png"
+    filename = f"CosinorRegressionModel(TRPTSD)/plots/24h_window/posterior_{param_clean}_{condition.lower()}_24h_window.png"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.show()
     
@@ -140,7 +144,7 @@ def compare_conditions(pre_data, post_data, param_name):
     
     # Save the comparison plot
     param_clean = param_name.replace('(', '').replace(')', '').replace('mean', '').strip()
-    filename = f"plots/24h_window/comparison_{param_clean}_pre_vs_post_24h_window.png"
+    filename = f"CosinorRegressionModel(TRPTSD)/plots/24h_window/comparison_{param_clean}_pre_vs_post_24h_window.png"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.show()
 
