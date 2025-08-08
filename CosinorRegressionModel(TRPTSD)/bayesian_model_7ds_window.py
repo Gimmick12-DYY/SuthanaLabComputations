@@ -80,10 +80,14 @@ def prepare_data_post(df):
 df_results_pre_data = cosinor.population_fit_group(prepare_data_pre(pre_data), n_components=[1,2,3], period=24, plot=False)
 df_best_models_pre_data = cosinor.get_best_models_population(prepare_data_pre(pre_data), df_results_pre_data, n_components=[1,2,3])
 cosinor.plot_df_models_population(prepare_data_pre(pre_data), df_best_models_pre_data)
+plt.savefig('cosinor_population_pre_7ds.png', dpi=300, bbox_inches='tight')
+plt.show()
 
 df_results_post_data = cosinor.population_fit_group(prepare_data_post(post_data), n_components=[1,2,3], period=24, plot=False)
 df_best_models_post_data = cosinor.get_best_models_population(prepare_data_post(pre_data), df_results_post_data, n_components=[1,2,3])
 cosinor.plot_df_models_population(prepare_data_post(post_data), df_best_models_post_data)
+plt.savefig('cosinor_population_post_7ds.png', dpi=300, bbox_inches='tight')
+plt.show()
 
 # Combine best models from pre- and post-condition for group-level analysis
 # (You may want to adjust this depending on your analysis goals)
@@ -110,7 +114,12 @@ def bayesian_group_inference(data, param_name):
     print(f"\nPosterior summary for {param_name}:")
     print(az.summary(trace, var_names=['mu', 'sigma']))
     az.plot_posterior(trace, var_names=['mu', 'sigma'])
-    plt.suptitle(f'Posterior of {param_name}')
+    plt.suptitle(f'Posterior of {param_name} - 7 Days Window')
+    
+    # Save the plot with descriptive filename
+    param_clean = param_name.replace('(', '').replace(')', '').replace('mean', '').strip()
+    filename = f"posterior_{param_clean}_7ds_window.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.show()
 
 # Run Bayesian inference for each cosinor parameter
