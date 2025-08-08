@@ -124,8 +124,14 @@ def bayesian_group_inference(data, param_name, condition):
     print(f"\nPosterior summary for {param_name} - {condition} condition:")
     print(az.summary(trace, var_names=['mu', 'sigma']))
     
+    # Create and save posterior plot
     az.plot_posterior(trace, var_names=['mu', 'sigma'])
     plt.suptitle(f'Posterior of {param_name} - {condition} condition')
+    
+    # Save the plot with descriptive filename
+    param_clean = param_name.replace('(', '').replace(')', '').replace('mean', '').strip()
+    filename = f"posterior_{param_clean}_{condition.lower()}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.show()
     
     return trace
@@ -150,6 +156,11 @@ def compare_conditions(pre_data, post_data, param_name):
     ax2.legend()
     
     plt.tight_layout()
+    
+    # Save the comparison plot
+    param_clean = param_name.replace('(', '').replace(')', '').replace('mean', '').strip()
+    filename = f"comparison_{param_clean}_pre_vs_post.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
     plt.show()
 
 # --- Run Bayesian Analysis for Each Condition ---
