@@ -28,6 +28,7 @@ def daily_cosinor(matrix):
     return pd.DataFrame(results)
 
 def plot_metric(pre, post, metric, ylabel):
+    """Plot the specified metric for pre and post conditions."""
     plt.figure(figsize=(12, 4))
     plt.plot(pre[metric], label='Pre')
     plt.plot(range(len(pre), len(pre)+len(post)), post[metric], label='Post')
@@ -39,6 +40,7 @@ def plot_metric(pre, post, metric, ylabel):
     plt.show()
 
 def boxplot_metric(pre, post, metric, ylabel):
+    """Create a boxplot for the specified metric for pre and post conditions."""
     plt.figure(figsize=(6, 4))
     plt.boxplot([pre[metric], post[metric]], labels=['Pre', 'Post'])
     plt.ylabel(ylabel)
@@ -46,11 +48,13 @@ def boxplot_metric(pre, post, metric, ylabel):
     plt.show()
 
 def print_summary(pre, post, metric, label):
+    """Print summary statistics for the specified metric."""
     print(f'{label} Summary:')
     print(f'  Pre:  mean={pre[metric].mean():.2f}, std={pre[metric].std():.2f}, min={pre[metric].min():.2f}, max={pre[metric].max():.2f}')
     print(f'  Post: mean={post[metric].mean():.2f}, std={post[metric].std():.2f}, min={post[metric].min():.2f}, max={post[metric].max():.2f}')
 
 def plot_event_heatmap(matrix, title):
+    """Plot a heatmap of event detections."""
     plt.figure(figsize=(14, 6))
     ax = plt.imshow(matrix.values.T, aspect='auto', cmap='viridis', origin='lower')
     plt.colorbar(ax, label='Event Count')
