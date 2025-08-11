@@ -18,6 +18,7 @@ def load_and_reshape(path, event_col, min_valid_hours=12):
     return matrix
 
 def daily_cosinor(matrix):
+    """Fit cosinor model to each row of the matrix and return R² values."""
     results = []
     for i, (date, row) in enumerate(matrix.iterrows()):
         time = np.arange(len(row))
