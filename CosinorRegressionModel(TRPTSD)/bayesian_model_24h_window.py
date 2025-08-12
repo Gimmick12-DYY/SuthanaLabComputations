@@ -31,7 +31,7 @@ os.makedirs('plots/24h_window', exist_ok=True)
 def load_data(path):
     """
     Load and preprocess cosinor data from a CSV file.
-    Assumes the file contains a 'Region start time' column and a 'Pattern A Channel 2' column.
+    Assumes the file contains a 'Region start time' column and a 'Pattern A Channel 2' column. Same format required for all subjects.
     Returns a DataFrame with added 'date' and 'hour' columns.
     """
     df = pd.read_csv(path)
