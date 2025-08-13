@@ -12,6 +12,8 @@ Inputs:
 Outputs (PyMC):
     - Posterior summaries and credible intervals for group mean and standard deviation of each parameter
     - Posterior distribution plots for each parameter
+
+This script is used to analyze cosinor parameters over a 7-day window, allowing for detailed temporal analysis of rhythmic patterns.
 """
 
 import pandas as pd
