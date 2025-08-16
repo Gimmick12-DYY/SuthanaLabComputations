@@ -146,7 +146,7 @@ def main():
     Main function to process data by different label values.
     """
     # File path
-    data_path = "data/RNS_G_Full_output.csv"
+    data_path = "CosinorRegressionModel(TRPTSD)/data/RNS_G_Full_output.csv"
     
     # Create output directories
     os.makedirs('outputs', exist_ok=True)
