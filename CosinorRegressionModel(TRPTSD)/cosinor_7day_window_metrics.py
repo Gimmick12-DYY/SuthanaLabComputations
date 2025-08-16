@@ -3,13 +3,14 @@
 
 This script calculates Cosinor metrics over 7-day windows and maps them back to the original hourly data structure.
 For each 7-day period, it computes mean amplitude, mean acrophase, and mean mesor, then assigns these values to all hours of that period.
+The script compares different label values (e.g., B3, etc.) instead of pre/post conditions.
 
 Inputs:
-    - Original CSV files with hourly data
+    - Single CSV file (RNS_G_Full_output.csv) with hourly data and Label column
     - CosinorPy module for rhythm analysis
 
 Outputs:
-    - 7-day window Cosinor metrics table
+    - 7-day window Cosinor metrics table for each label
     - Enhanced CSV files with 7-day metrics mapped to hourly structure
 """
 
@@ -22,7 +23,7 @@ from datetime import datetime, timedelta
 def load_data(path):
     """
     Load and preprocess cosinor data from a CSV file.
-    Assumes the file contains a 'Region start time' column and a 'Pattern A Channel 2' column.
+    Assumes the file contains a 'Region start time' column, 'Pattern A Channel 2' column, and 'Label' column.
     Returns a DataFrame with added 'date' and 'hour' columns.
     """
     df = pd.read_csv(path)
@@ -189,72 +190,110 @@ def map_7day_metrics_to_hourly_data(original_df, window_metrics_df):
 
 def main():
     """
-    Main function to process both pre and post data files with 7-day windows.
+    Main function to process data by different label values with 7-day windows.
     """
-    # File paths
-    pre_data_path = "data/RNS_G_Pre_output.csv"
-    post_data_path = "data/RNS_G_M1_output.csv"
+    # File path
+    data_path = "data/RNS_G_Full_output.csv"
     
     # Create output directories
     os.makedirs('outputs', exist_ok=True)
     os.makedirs('outputs/7day_metrics', exist_ok=True)
     os.makedirs('outputs/enhanced_data_7d', exist_ok=True)
     
-    # Process Pre-condition data
-    print("Processing Pre-condition data with 7-day windows...")
-    pre_data = load_data(pre_data_path)
-    pre_window_data = create_7day_windows(pre_data)
-    pre_window_metrics = calculate_7day_cosinor_metrics(pre_window_data, period=24)
-    pre_enhanced_data = map_7day_metrics_to_hourly_data(pre_data, pre_window_metrics)
+    # Load the full dataset
+    print("Loading full dataset...")
+    full_data = load_data(data_path)
     
-    # Save pre-condition results
-    pre_window_metrics.to_csv('outputs/7day_metrics/pre_7day_cosinor_metrics.csv', index=False)
-    pre_enhanced_data.to_csv('outputs/enhanced_data_7d/pre_enhanced_with_7day_cosinor_metrics.csv', index=False)
+    # Get unique labels
+    unique_labels = full_data['Label'].unique()
+    print(f"Found {len(unique_labels)} unique labels: {unique_labels}")
     
-    print(f"Pre-condition: {len(pre_window_metrics)} 7-day windows processed")
-    print(f"Pre-condition enhanced data shape: {pre_enhanced_data.shape}")
+    # Process each label separately
+    all_enhanced_data = []
+    all_window_metrics = []
     
-    # Process Post-condition data
-    print("\nProcessing Post-condition data with 7-day windows...")
-    post_data = load_data(post_data_path)
-    post_window_data = create_7day_windows(post_data)
-    post_window_metrics = calculate_7day_cosinor_metrics(post_window_data, period=24)
-    post_enhanced_data = map_7day_metrics_to_hourly_data(post_data, post_window_metrics)
+    for label in unique_labels:
+        print(f"\nProcessing label: {label}")
+        
+        # Filter data for this label
+        label_data = full_data[full_data['Label'] == label].copy()
+        
+        if len(label_data) == 0:
+            print(f"No data found for label {label}")
+            continue
+            
+        print(f"  Data shape: {label_data.shape}")
+        print(f"  Date range: {label_data['date'].min()} to {label_data['date'].max()}")
+        
+        # Calculate 7-day window metrics for this label
+        window_data = create_7day_windows(label_data)
+        window_metrics = calculate_7day_cosinor_metrics(window_data, period=24)
+        
+        # Add label information to metrics
+        window_metrics['Label'] = label
+        
+        # Map metrics back to hourly data
+        enhanced_data = map_7day_metrics_to_hourly_data(label_data, window_metrics)
+        
+        # Save results for this label
+        window_metrics.to_csv(f'outputs/7day_metrics/{label}_7day_cosinor_metrics.csv', index=False)
+        enhanced_data.to_csv(f'outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv', index=False)
+        
+        # Collect for combined analysis
+        all_enhanced_data.append(enhanced_data)
+        all_window_metrics.append(window_metrics)
+        
+        print(f"  {len(window_metrics)} 7-day windows processed")
+        print(f"  Enhanced data shape: {enhanced_data.shape}")
     
-    # Save post-condition results
-    post_window_metrics.to_csv('outputs/7day_metrics/post_7day_cosinor_metrics.csv', index=False)
-    post_enhanced_data.to_csv('outputs/enhanced_data_7d/post_enhanced_with_7day_cosinor_metrics.csv', index=False)
+    # Combine all enhanced data
+    if all_enhanced_data:
+        combined_enhanced_data = pd.concat(all_enhanced_data, ignore_index=True)
+        combined_enhanced_data = combined_enhanced_data.sort_values(['Label', 'Region start time'])
+        combined_enhanced_data.to_csv('outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv', index=False)
+        
+        print(f"\nCombined enhanced data shape: {combined_enhanced_data.shape}")
     
-    print(f"Post-condition: {len(post_window_metrics)} 7-day windows processed")
-    print(f"Post-condition enhanced data shape: {post_enhanced_data.shape}")
+    # Combine all window metrics
+    if all_window_metrics:
+        combined_window_metrics = pd.concat(all_window_metrics, ignore_index=True)
+        combined_window_metrics = combined_window_metrics.sort_values(['Label', 'window_start'])
+        combined_window_metrics.to_csv('outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv', index=False)
+        
+        print(f"Combined 7-day window metrics shape: {combined_window_metrics.shape}")
     
     # Create summary report
     print("\n" + "="*50)
     print("7-DAY WINDOW SUMMARY REPORT")
     print("="*50)
     
-    print(f"\nPre-condition 7-day window metrics summary:")
-    print(f"  Total 7-day windows: {len(pre_window_metrics)}")
-    print(f"  Windows with valid amplitude: {pre_window_metrics['mean_amplitude'].notna().sum()}")
-    print(f"  Windows with valid acrophase: {pre_window_metrics['mean_acrophase'].notna().sum()}")
-    print(f"  Windows with valid mesor: {pre_window_metrics['mean_mesor'].notna().sum()}")
+    for label in unique_labels:
+        label_metrics = combined_window_metrics[combined_window_metrics['Label'] == label]
+        if len(label_metrics) > 0:
+            print(f"\nLabel '{label}' 7-day window metrics summary:")
+            print(f"  Total 7-day windows: {len(label_metrics)}")
+            print(f"  Windows with valid amplitude: {label_metrics['mean_amplitude'].notna().sum()}")
+            print(f"  Windows with valid acrophase: {label_metrics['mean_acrophase'].notna().sum()}")
+            print(f"  Windows with valid mesor: {label_metrics['mean_mesor'].notna().sum()}")
+            
+            # Show some statistics
+            if label_metrics['mean_amplitude'].notna().sum() > 0:
+                print(f"  Mean amplitude: {label_metrics['mean_amplitude'].mean():.3f} ± {label_metrics['mean_amplitude'].std():.3f}")
+                print(f"  Mean acrophase: {label_metrics['mean_acrophase'].mean():.3f} ± {label_metrics['mean_acrophase'].std():.3f}")
+                print(f"  Mean mesor: {label_metrics['mean_mesor'].mean():.3f} ± {label_metrics['mean_mesor'].std():.3f}")
     
-    print(f"\nPost-condition 7-day window metrics summary:")
-    print(f"  Total 7-day windows: {len(post_window_metrics)}")
-    print(f"  Windows with valid amplitude: {post_window_metrics['mean_amplitude'].notna().sum()}")
-    print(f"  Windows with valid acrophase: {post_window_metrics['mean_acrophase'].notna().sum()}")
-    print(f"  Windows with valid mesor: {post_window_metrics['mean_mesor'].notna().sum()}")
-    
-    # Show sample of enhanced data
-    print(f"\nSample of enhanced pre-condition data (7-day windows):")
-    sample_cols = ['Region start time', 'Pattern A Channel 2', 'window_id', 'mean_amplitude_7d', 'mean_acrophase_7d', 'mean_mesor_7d']
-    print(pre_enhanced_data[sample_cols].head(10))
+    # Show sample of combined enhanced data
+    if all_enhanced_data:
+        print(f"\nSample of combined enhanced data (7-day windows):")
+        sample_cols = ['Region start time', 'Pattern A Channel 2', 'Label', 'CAPS_score', 'window_id', 'mean_amplitude_7d', 'mean_acrophase_7d', 'mean_mesor_7d']
+        print(combined_enhanced_data[sample_cols].head(10))
     
     print(f"\nFiles saved:")
-    print(f"  - outputs/7day_metrics/pre_7day_cosinor_metrics.csv")
-    print(f"  - outputs/7day_metrics/post_7day_cosinor_metrics.csv")
-    print(f"  - outputs/enhanced_data_7d/pre_enhanced_with_7day_cosinor_metrics.csv")
-    print(f"  - outputs/enhanced_data_7d/post_enhanced_with_7day_cosinor_metrics.csv")
+    for label in unique_labels:
+        print(f"  - outputs/7day_metrics/{label}_7day_cosinor_metrics.csv")
+        print(f"  - outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv")
+    print(f"  - outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv")
+    print(f"  - outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv")
 
 if __name__ == "__main__":
     main() 
