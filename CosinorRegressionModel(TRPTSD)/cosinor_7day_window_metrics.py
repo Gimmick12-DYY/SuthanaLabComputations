@@ -17,8 +17,17 @@ Outputs:
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
 from datetime import datetime, timedelta
+
+# Set style for better plots
+plt.style.use('default')
+sns.set_palette("husl")
+
+# Create plots directory if it doesn't exist
+os.makedirs('CosinorRegressionModel(TRPTSD)/plots/7day_metrics', exist_ok=True)
 
 def load_data(path):
     """
@@ -188,6 +197,176 @@ def map_7day_metrics_to_hourly_data(original_df, window_metrics_df):
     
     return enhanced_df
 
+def create_7day_metrics_plots(combined_window_metrics, combined_enhanced_data, unique_labels):
+    """
+    Create various plots for 7-day window Cosinor metrics analysis.
+    """
+    print("\nCreating plots for 7-day window metrics analysis...")
+    
+    # 1. Time series plots for each metric by label
+    metrics_to_plot = ['mean_amplitude', 'mean_acrophase', 'mean_mesor']
+    metric_names = ['Amplitude', 'Acrophase', 'Mesor']
+    
+    for metric, metric_name in zip(metrics_to_plot, metric_names):
+        plt.figure(figsize=(15, 8))
+        
+        for label in unique_labels:
+            label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+            if len(label_data) > 0:
+                # Use window_start as x-axis
+                plt.plot(label_data['window_start'], label_data[metric], 
+                        marker='o', linewidth=2, markersize=4, label=f'Label {label}')
+        
+        plt.title(f'7-Day Window {metric_name} Over Time by Label', fontsize=16, fontweight='bold')
+        plt.xlabel('Window Start Date', fontsize=12)
+        plt.ylabel(f'{metric_name}', fontsize=12)
+        plt.legend(fontsize=10)
+        plt.grid(True, alpha=0.3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(f'CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_{metric}_time_series.png', 
+                   dpi=300, bbox_inches='tight')
+        plt.show()
+    
+    # 2. Box plots comparing metrics across labels
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    
+    for i, (metric, metric_name) in enumerate(zip(metrics_to_plot, metric_names)):
+        # Prepare data for box plot
+        plot_data = []
+        plot_labels = []
+        
+        for label in unique_labels:
+            label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+            if len(label_data) > 0 and label_data[metric].notna().sum() > 0:
+                plot_data.append(label_data[metric].dropna())
+                plot_labels.append(f'Label {label}')
+        
+        if plot_data:
+            axes[i].boxplot(plot_data, labels=plot_labels)
+            axes[i].set_title(f'7-Day {metric_name} Distribution by Label', fontweight='bold')
+            axes[i].set_ylabel(metric_name)
+            axes[i].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_metrics_boxplots.png', 
+               dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    # 3. Heatmap of correlation between metrics
+    for label in unique_labels:
+        label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+        if len(label_data) > 0:
+            # Select numeric columns for correlation
+            numeric_cols = ['mean_amplitude', 'mean_acrophase', 'mean_mesor', 'p_value', 'r_squared', 'data_points']
+            available_cols = [col for col in numeric_cols if col in label_data.columns]
+            
+            if len(available_cols) > 1:
+                corr_matrix = label_data[available_cols].corr()
+                
+                plt.figure(figsize=(8, 6))
+                sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, 
+                           square=True, fmt='.2f')
+                plt.title(f'7-Day Window Correlation Matrix - Label {label}', fontweight='bold')
+                plt.tight_layout()
+                plt.savefig(f'CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_correlation_matrix_label_{label}.png', 
+                           dpi=300, bbox_inches='tight')
+                plt.show()
+    
+    # 4. Distribution plots for each metric
+    fig, axes = plt.subplots(3, 1, figsize=(12, 15))
+    
+    for i, (metric, metric_name) in enumerate(zip(metrics_to_plot, metric_names)):
+        for label in unique_labels:
+            label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+            if len(label_data) > 0 and label_data[metric].notna().sum() > 0:
+                axes[i].hist(label_data[metric].dropna(), alpha=0.7, label=f'Label {label}', bins=15)
+        
+        axes[i].set_title(f'7-Day Window {metric_name} Distribution by Label', fontweight='bold')
+        axes[i].set_xlabel(metric_name)
+        axes[i].set_ylabel('Frequency')
+        axes[i].legend()
+        axes[i].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_metrics_distributions.png', 
+               dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    # 5. Summary statistics plot
+    plt.figure(figsize=(12, 8))
+    
+    # Calculate summary statistics for each label
+    summary_stats = []
+    for label in unique_labels:
+        label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+        if len(label_data) > 0:
+            stats = {
+                'Label': label,
+                'Amplitude_Mean': label_data['mean_amplitude'].mean(),
+                'Amplitude_Std': label_data['mean_amplitude'].std(),
+                'Acrophase_Mean': label_data['mean_acrophase'].mean(),
+                'Acrophase_Std': label_data['mean_acrophase'].std(),
+                'Mesor_Mean': label_data['mean_mesor'].mean(),
+                'Mesor_Std': label_data['mean_mesor'].std(),
+                'Windows_Count': len(label_data)
+            }
+            summary_stats.append(stats)
+    
+    if summary_stats:
+        summary_df = pd.DataFrame(summary_stats)
+        
+        # Create bar plot with error bars
+        x = np.arange(len(summary_df))
+        width = 0.25
+        
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Amplitude
+        ax.bar(x - width, summary_df['Amplitude_Mean'], width, 
+               label='Amplitude', yerr=summary_df['Amplitude_Std'], capsize=5)
+        
+        # Acrophase
+        ax.bar(x, summary_df['Acrophase_Mean'], width, 
+               label='Acrophase', yerr=summary_df['Acrophase_Std'], capsize=5)
+        
+        # Mesor
+        ax.bar(x + width, summary_df['Mesor_Mean'], width, 
+               label='Mesor', yerr=summary_df['Mesor_Std'], capsize=5)
+        
+        ax.set_xlabel('Label')
+        ax.set_ylabel('Metric Value')
+        ax.set_title('7-Day Window Summary Statistics by Label', fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'Label {label}' for label in summary_df['Label']])
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig('CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_metrics_summary_statistics.png', 
+                   dpi=300, bbox_inches='tight')
+        plt.show()
+    
+    # 6. Window duration analysis
+    plt.figure(figsize=(12, 6))
+    
+    for label in unique_labels:
+        label_data = combined_window_metrics[combined_window_metrics['Label'] == label]
+        if len(label_data) > 0:
+            plt.scatter(label_data['window_start'], label_data['data_points'], 
+                       alpha=0.7, label=f'Label {label}', s=50)
+    
+    plt.title('Data Points per 7-Day Window by Label', fontweight='bold')
+    plt.xlabel('Window Start Date')
+    plt.ylabel('Number of Data Points')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig('CosinorRegressionModel(TRPTSD)/plots/7day_metrics/7day_data_points_per_window.png', 
+               dpi=300, bbox_inches='tight')
+    plt.show()
+
 def main():
     """
     Main function to process data by different label values with 7-day windows.
@@ -287,6 +466,10 @@ def main():
         print(f"\nSample of combined enhanced data (7-day windows):")
         sample_cols = ['Region start time', 'Pattern A Channel 2', 'Label', 'CAPS_score', 'window_id', 'mean_amplitude_7d', 'mean_acrophase_7d', 'mean_mesor_7d']
         print(combined_enhanced_data[sample_cols].head(10))
+    
+    # Create plots
+    if all_window_metrics and all_enhanced_data:
+        create_7day_metrics_plots(combined_window_metrics, combined_enhanced_data, unique_labels)
     
     print(f"\nFiles saved:")
     for label in unique_labels:
