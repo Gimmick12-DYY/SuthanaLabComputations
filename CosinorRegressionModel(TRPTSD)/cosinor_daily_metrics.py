@@ -310,9 +310,9 @@ def main():
     data_path = "CosinorRegressionModel(TRPTSD)/data/RNS_G_Full_output.csv"
     
     # Create output directories
-    os.makedirs('outputs', exist_ok=True)
-    os.makedirs('outputs/daily_metrics', exist_ok=True)
-    os.makedirs('outputs/enhanced_data', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/daily_metrics', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data', exist_ok=True)
     
     # Load the full dataset
     print("Loading full dataset...")
@@ -350,8 +350,8 @@ def main():
         enhanced_data = map_metrics_to_hourly_data(label_data, daily_metrics)
         
         # Save results for this label
-        daily_metrics.to_csv(f'outputs/daily_metrics/{label}_daily_cosinor_metrics.csv', index=False)
-        enhanced_data.to_csv(f'outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv', index=False)
+        daily_metrics.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{label}_daily_cosinor_metrics.csv', index=False)
+        enhanced_data.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv', index=False)
         
         # Collect for combined analysis
         all_enhanced_data.append(enhanced_data)
@@ -364,7 +364,7 @@ def main():
     if all_enhanced_data:
         combined_enhanced_data = pd.concat(all_enhanced_data, ignore_index=True)
         combined_enhanced_data = combined_enhanced_data.sort_values(['Label', 'Region start time'])
-        combined_enhanced_data.to_csv('outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv', index=False)
+        combined_enhanced_data.to_csv('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv', index=False)
         
         print(f"\nCombined enhanced data shape: {combined_enhanced_data.shape}")
     
@@ -372,7 +372,7 @@ def main():
     if all_daily_metrics:
         combined_daily_metrics = pd.concat(all_daily_metrics, ignore_index=True)
         combined_daily_metrics = combined_daily_metrics.sort_values(['Label', 'date'])
-        combined_daily_metrics.to_csv('outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv', index=False)
+        combined_daily_metrics.to_csv('CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv', index=False)
         
         print(f"Combined daily metrics shape: {combined_daily_metrics.shape}")
     
@@ -408,10 +408,10 @@ def main():
     
     print(f"\nFiles saved:")
     for label in unique_labels:
-        print(f"  - outputs/daily_metrics/{label}_daily_cosinor_metrics.csv")
-        print(f"  - outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv")
-    print(f"  - outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv")
-    print(f"  - outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv")
+        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{label}_daily_cosinor_metrics.csv")
+        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv")
+    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv")
+    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv")
 
 if __name__ == "__main__":
     main() 
