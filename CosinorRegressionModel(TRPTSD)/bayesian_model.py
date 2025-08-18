@@ -60,7 +60,7 @@ def prepare_data_pre(df):
 def prepare_data_post(df):
     """
     Prepare post-condition data for cosinor regression.
-    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns.
+    Adds 'week', 'test', 'x' (hour), and 'y' (signal) columns to accommondate CosinorPy function format.
     """
     df1 = df.copy()
     df1['date'] = pd.to_datetime(df1['date'])
