@@ -372,12 +372,12 @@ def main():
     Main function to process data by different label values with 7-day windows.
     """
     # File path
-    data_path = "data/RNS_G_Full_output.csv"
+    data_path = "CosinorRegressionModel(TRPTSD)/data/RNS_G_Full_output.csv"
     
     # Create output directories
-    os.makedirs('outputs', exist_ok=True)
-    os.makedirs('outputs/7day_metrics', exist_ok=True)
-    os.makedirs('outputs/enhanced_data_7d', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/7day_metrics', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data_7d', exist_ok=True)
     
     # Load the full dataset
     print("Loading full dataset...")
@@ -415,8 +415,8 @@ def main():
         enhanced_data = map_7day_metrics_to_hourly_data(label_data, window_metrics)
         
         # Save results for this label
-        window_metrics.to_csv(f'outputs/7day_metrics/{label}_7day_cosinor_metrics.csv', index=False)
-        enhanced_data.to_csv(f'outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv', index=False)
+        window_metrics.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/7day_metrics/{label}_7day_cosinor_metrics.csv', index=False)
+        enhanced_data.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv', index=False)
         
         # Collect for combined analysis
         all_enhanced_data.append(enhanced_data)
@@ -429,7 +429,7 @@ def main():
     if all_enhanced_data:
         combined_enhanced_data = pd.concat(all_enhanced_data, ignore_index=True)
         combined_enhanced_data = combined_enhanced_data.sort_values(['Label', 'Region start time'])
-        combined_enhanced_data.to_csv('outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv', index=False)
+        combined_enhanced_data.to_csv('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv', index=False)
         
         print(f"\nCombined enhanced data shape: {combined_enhanced_data.shape}")
     
@@ -437,7 +437,7 @@ def main():
     if all_window_metrics:
         combined_window_metrics = pd.concat(all_window_metrics, ignore_index=True)
         combined_window_metrics = combined_window_metrics.sort_values(['Label', 'window_start'])
-        combined_window_metrics.to_csv('outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv', index=False)
+        combined_window_metrics.to_csv('CosinorRegressionModel(TRPTSD)/outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv', index=False)
         
         print(f"Combined 7-day window metrics shape: {combined_window_metrics.shape}")
     
@@ -473,10 +473,10 @@ def main():
     
     print(f"\nFiles saved:")
     for label in unique_labels:
-        print(f"  - outputs/7day_metrics/{label}_7day_cosinor_metrics.csv")
-        print(f"  - outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv")
-    print(f"  - outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv")
-    print(f"  - outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv")
+        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/7day_metrics/{label}_7day_cosinor_metrics.csv")
+        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data_7d/{label}_enhanced_with_7day_cosinor_metrics.csv")
+    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/7day_metrics/all_labels_7day_cosinor_metrics.csv")
+    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data_7d/all_labels_enhanced_with_7day_cosinor_metrics.csv")
 
 if __name__ == "__main__":
     main() 
