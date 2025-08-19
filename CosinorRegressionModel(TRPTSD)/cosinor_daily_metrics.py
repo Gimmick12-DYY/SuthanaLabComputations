@@ -73,6 +73,7 @@ def calculate_daily_cosinor_metrics(daily_data, period=24):
             best_models = cosinor.get_best_models_population(day_data, results, n_components=[1,2,3])
             
             # Extract metrics
+            # Problem: due to CosinorPY limits, since we only have one observation per hour, p-values, R-squared, and standard deviations may not be available.
             if not best_models.empty:
                 metrics = {
                     'date': date,
