@@ -1,4 +1,5 @@
 # Ignore all files in the data/ folder
+# Files are ignored for data privacy and security reasons.
 CosinorRegressionModel(TRPTSD)/data/ 
 CosinorRegressionModel(TRPTSD)/plots/ 
 CosinorRegressionModel(TRPTSD)/outputs/ 
