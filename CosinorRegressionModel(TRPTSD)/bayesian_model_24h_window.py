@@ -25,7 +25,7 @@ from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
 np.seterr(divide='ignore')
 
 # Create plots directory if it doesn't exist
-os.makedirs('plots/24h_window', exist_ok=True)
+os.makedirs('CosinorRegressionModel/plots/24h_window', exist_ok=True)
 
 # --- Data Loading and Preparation ---
 def load_data(path):
