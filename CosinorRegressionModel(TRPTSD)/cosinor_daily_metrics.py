@@ -6,12 +6,13 @@ For each day, it computes mean amplitude, mean acrophase, and mean mesor, then a
 The script compares different label values (e.g., B3, etc.) instead of pre/post conditions.
 
 Inputs:
-    - Single CSV file (RNS_G_Full_output.csv) with hourly data and Label column
+    - Single CSV file (RNS_G_Full_output.csv) with hourly RNS data and Label column
     - CosinorPy module for rhythm analysis
 
 Outputs:
     - Daily Cosinor metrics table for each label
     - Enhanced CSV files with daily metrics mapped to hourly structure
+    - Analysis plots for distribution comparison
 """
 
 import pandas as pd
