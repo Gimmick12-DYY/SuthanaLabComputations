@@ -71,3 +71,16 @@ class SoftDecisionTree(nn.Module):
         leaf_probs = torch.cat(leaf_probs, dim=1)  # Shape: (batch_size, n_leaves)
         output = torch.matmul(leaf_probs, self.leaf_values)  # Shape: (batch_size, 1)
         return output   
+    
+# This is the Random Forest Model used in the stacking ensemble
+class SoftRandomForest(nn.Module):
+    def __init__(self, n_trees=10, tree_depth=3):
+        super(SoftRandomForest, self).__init__()
+        self.n_trees = n_trees
+        self.trees = nn.ModuleList([SoftDecisionTree(depth=tree_depth) for _ in range(n_trees)])
+    
+    def forward(self, x):
+        preds = [tree(x) for tree in self.trees]
+        preds = torch.stack(preds, dim=0)  # Shape: (n_trees, batch_size, 1)
+        return torch.mean(preds, dim=0)  # Shape: (batch_size, 1)
+    
