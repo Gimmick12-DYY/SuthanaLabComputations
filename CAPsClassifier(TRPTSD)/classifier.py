@@ -119,3 +119,26 @@ class StackingFusionModel(nn.Module):
         fusion_input = torch.cat((rf_preds, xgboost_preds), dim=1)
         fusion_output = self.meta_model(fusion_input)
         return fusion_output
+    
+def train_model(model, optimizer, criterion, x, y, num_epochs=300):
+    model.train()
+    loss_list = []
+
+    for epoch in range(num_epochs):
+        optimizer.zero_grad()
+        outputs = model(x)
+        loss = criterion(outputs, y)
+        loss.backward()
+        optimizer.step()
+        loss_list.append(loss.item())
+        if (epoch + 1) % 50 == 0:
+            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+    return loss_list
+
+def evaluate_model(model, x, y):
+    model.eval()
+    with torch.no_grad():
+        preds = model(x)
+        loss = nn.MSELoss()(preds, y)
+    
+    return preds.cpu().numpy(), loss.item()
