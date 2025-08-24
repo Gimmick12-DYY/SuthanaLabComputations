@@ -83,4 +83,18 @@ class SoftRandomForest(nn.Module):
         preds = [tree(x) for tree in self.trees]
         preds = torch.stack(preds, dim=0)  # Shape: (n_trees, batch_size, 1)
         return torch.mean(preds, dim=0)  # Shape: (batch_size, 1)
+
+class SoftXGBoost(nn.Module):
+    def __init__(self, n_estimators=10, tree_depth=3, learning_rate=0.1):
+        super(SoftXGBoost, self).__init__()
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+
+        self.trees = nn.ModuleList([SoftDecisionTree(depth=tree_depth) for _ in range(n_estimators)])
     
+    def forward(self, x):
+        preds = torch.zeros(x.size(0), 1).to(device)
+        for tree in self.trees:
+            preds += self.learning_rate * tree(x)
+        return preds
+
