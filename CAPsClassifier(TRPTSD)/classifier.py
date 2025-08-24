@@ -84,6 +84,7 @@ class SoftRandomForest(nn.Module):
         preds = torch.stack(preds, dim=0)  # Shape: (n_trees, batch_size, 1)
         return torch.mean(preds, dim=0)  # Shape: (batch_size, 1)
 
+# This is the XGBoost Model used in the stacking ensemble
 class SoftXGBoost(nn.Module):
     def __init__(self, n_estimators=10, tree_depth=3, learning_rate=0.1):
         super(SoftXGBoost, self).__init__()
@@ -98,3 +99,23 @@ class SoftXGBoost(nn.Module):
             preds += self.learning_rate * tree(x)
         return preds
 
+class StackingFusionModel(nn.Module):
+    def __init__(self, rf_model, xgb_model):
+        super(StackingFusionModel, self).__init__()
+        self.rf_model = rf_model
+        self.xgb_model = xgb_model
+
+        # Meta model
+        self.meta_model = nn.Sequential(
+            nn.Linear(2, 8),
+            nn.ReLU(),
+            nn.Linear(8, 1)
+        )
+    
+    def forward(self, x):
+        rf_preds = self.rf_model(x)
+        xgboost_preds = self.xgb_model(x)
+        
+        fusion_input = torch.cat((rf_preds, xgboost_preds), dim=1)
+        fusion_output = self.meta_model(fusion_input)
+        return fusion_output
