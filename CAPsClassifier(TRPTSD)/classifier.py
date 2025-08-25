@@ -2,8 +2,6 @@
 Classifier Model for CAPs Result and Test Metrics
 
 This module implements a classifier model using a stacking approach with XGBoost and RandomForest.
-
-
 """
 
 import torch
@@ -22,6 +20,7 @@ device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # This the Decision Tree Model used in the stacking ensemble
 class SoftDecisionTree(nn.Module):
+    """Individual Decision Tree Model used in Random Forest and XGBoost."""
     def __init__(self, depth=3):
         super(SoftDecisionTree, self).__init__()
         self.depth = depth
