@@ -123,6 +123,9 @@ class StackingFusionModel(nn.Module):
         fusion_output = self.meta_model(fusion_input)
         return fusion_output
     
+
+# Training and Evaluation Functions
+
 def train_model(model, optimizer, criterion, x, y, num_epochs=300):
     model.train()
     loss_list = []
@@ -145,3 +148,5 @@ def evaluate_model(model, x, y):
         loss = nn.MSELoss()(preds, y)
     
     return preds.cpu().numpy(), loss.item()
+
+## Example Usage, this is where the data is loaded and the models are trained and evaluated
