@@ -99,6 +99,9 @@ class SoftXGBoost(nn.Module):
             preds += self.learning_rate * tree(x)
         return preds
 
+# This is the Stacking Fusion Model that combines Random Forest and XGBoost predictions
+# The fusion model is a simple feedforward neural network
+
 class StackingFusionModel(nn.Module):
     def __init__(self, rf_model, xgb_model):
         super(StackingFusionModel, self).__init__()
