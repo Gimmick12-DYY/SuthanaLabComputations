@@ -10,6 +10,7 @@ import torch.optim as optim
 import numpy as np
 import random
 import matplotlib as plt
+import os
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -243,4 +244,28 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
+# Save composed figure and each subplot to outputs without altering original visualization code
+try:
+    os.makedirs('CAPsClassifier(TRPTSD)/outputs', exist_ok=True)
+    # Save the full 2x2 figure
+    plt.savefig('CAPsClassifier(TRPTSD)/outputs/classifier_analysis.png', dpi=300, bbox_inches='tight')
+
+    # Also save each subplot individually
+    fig = plt.gcf()
+    # Ensure renderer is ready for tightbbox computations
+    fig.canvas.draw_idle()
+    fig.canvas.flush_events()
+    renderer = fig.canvas.get_renderer()
+
+    for idx, ax in enumerate(fig.axes, start=1):
+        try:
+            bbox = ax.get_tightbbox(renderer)
+            # Convert from display to inches for bbox_inches
+            bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
+            outfile = f'CAPsClassifier(TRPTSD)/outputs/classifier_analysis_subplot{idx}.png'
+            fig.savefig(outfile, dpi=300, bbox_inches=bbox_inches)
+        except Exception as crop_err:
+            print(f"Warning: could not save subplot {idx}: {crop_err}")
+except Exception as e:
+    print(f"Warning: could not save figure(s): {e}")
 plt.show()
