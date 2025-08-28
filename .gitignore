@@ -4,3 +4,6 @@ CosinorRegressionModel(TRPTSD)/data/
 CosinorRegressionModel(TRPTSD)/plots/ 
 CosinorRegressionModel(TRPTSD)/outputs/ 
 CAPsClassifier(TRPTSD)/outputs/
+CAPsClassifier(TRPTSD)/data/
+LogisticRegressionModel(TRPTSD)/outputs/
+LogisticRegressionModel(TRPTSD)/data/
