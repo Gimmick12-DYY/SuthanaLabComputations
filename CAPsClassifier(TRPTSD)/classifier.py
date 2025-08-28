@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import random
-import matplotlib
+import matplotlib as plt
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -190,3 +190,57 @@ print("Training Stacking Fusion Model...")
 loss_stack = train_model(stacking_model, optimizer_stack, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
 stacking_preds, stacking_test_loss = evaluate_model(stacking_model, x_test_tensor, y_test_tensor)
 print(f"Stacking Fusion Test MSE: {stacking_test_loss:.4f}")
+
+# Analysis and Visualizations
+plt.figure(figsize=(16, 12))
+
+# Subplot 1: Training Loss Curve
+plt.subplot(2, 2, 1)
+# This is a simple line plot for training loss curves which only analyzes on the loss of XGBoost model, can add more.
+plt.plot(loss_xgb, color='red', label="XGBoost Loss")
+plt.title("Training Loss Curve", fontsize=14)
+plt.xlabel("Iterations", fontsize=12)
+plt.ylabel("Loss", fontsize=12)
+plt.legend()
+plt.grid(True)
+
+# Subplot 2: Prediction Comparison
+plt.subplot(2, 2, 2)
+# Sorting is required for smooth curve visualizations
+sorted_idx = np.argsort(x_test.squeeze())
+plt.scatter(x_test, y_test, color='orange', alpha=0.6, label="True Data", marker='o')
+plt.plot(x_test[sorted_idx], np.array(rf_preds)[sorted_idx], color='red', label="Random Forest", linewidth=2)
+plt.plot(x_test[sorted_idx], np.array(xgb_preds)[sorted_idx], color='blue', label="XGBoost", linewidth=2)
+plt.plot(x_test[sorted_idx], np.array(stacking_preds)[sorted_idx], color='green', label="Stacking Fusion", linewidth=2)
+plt.title("Prediction Comparison", fontsize=14)
+plt.xlabel("X", fontsize=12)
+plt.ylabel("Y", fontsize=12)
+plt.legend()
+plt.grid(True)
+
+# Subplot 3: Residual Distribution
+plt.subplot(2, 2, 3)
+# Fusion model residual = real - predicted
+residuals = y_test_tensor.cpu().numpy() - np.array(stacking_preds)
+plt.hist(residuals, bins=20, color='violet', alpha=0.7)
+plt.title("Residual Distribution", fontsize=14)
+plt.xlabel("Prediction Error", fontsize=12)
+plt.ylabel("Frequency", fontsize=12)
+plt.grid(True)
+
+# Subplot 4: Error Histogram Comparison
+plt.subplot(2, 2, 4)
+errors_rf = np.abs(y_test_tensor.cpu().numpy() - np.array(rf_preds))
+errors_xgb = np.abs(y_test_tensor.cpu().numpy() - np.array(xgb_preds))
+errors_stack = np.abs(y_test_tensor.cpu().numpy() - np.array(stacking_preds))
+plt.plot(x_test[sorted_idx], errors_rf[sorted_idx], color='red', linestyle='--', label="RF Error", linewidth=2)
+plt.plot(x_test[sorted_idx], errors_xgb[sorted_idx], color='blue', linestyle='--', label="XGB Error", linewidth=2)
+plt.plot(x_test[sorted_idx], errors_stack[sorted_idx], color='green', linestyle='--', label="Stacking Error", linewidth=2)
+plt.title("Error Histogram Comparison", fontsize=14)
+plt.xlabel("X", fontsize=12)
+plt.ylabel("Absolute Error", fontsize=12)
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
+plt.show()
