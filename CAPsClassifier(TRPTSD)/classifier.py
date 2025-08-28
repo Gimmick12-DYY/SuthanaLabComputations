@@ -74,6 +74,7 @@ class SoftDecisionTree(nn.Module):
     
 # This is the Random Forest Model used in the stacking ensemble
 class SoftRandomForest(nn.Module):
+    """Random Forest Model using soft decision trees."""
     def __init__(self, n_trees=10, tree_depth=3):
         super(SoftRandomForest, self).__init__()
         self.n_trees = n_trees
@@ -86,6 +87,7 @@ class SoftRandomForest(nn.Module):
 
 # This is the XGBoost Model used in the stacking ensemble
 class SoftXGBoost(nn.Module):
+    """XGBoost Model using soft decision trees."""
     def __init__(self, n_estimators=10, tree_depth=3, learning_rate=0.1):
         super(SoftXGBoost, self).__init__()
         self.n_estimators = n_estimators
@@ -103,6 +105,10 @@ class SoftXGBoost(nn.Module):
 # The fusion model is a simple feedforward neural network
 
 class StackingFusionModel(nn.Module):
+    """
+    Stacking Fusion Model combining Random Forest and XGBoost predictions. 
+    The fusion model is a simple feedforward neural network.
+    """
     def __init__(self, rf_model, xgb_model):
         super(StackingFusionModel, self).__init__()
         self.rf_model = rf_model
@@ -127,6 +133,7 @@ class StackingFusionModel(nn.Module):
 # Training and Evaluation Functions
 
 def train_model(model, optimizer, criterion, x, y, num_epochs=300):
+    """Train the model and return the training loss history."""
     model.train()
     loss_list = []
 
@@ -142,6 +149,7 @@ def train_model(model, optimizer, criterion, x, y, num_epochs=300):
     return loss_list
 
 def evaluate_model(model, x, y):
+    """Evaluate the model and return predictions and loss."""
     model.eval()
     with torch.no_grad():
         preds = model(x)
@@ -158,6 +166,8 @@ y_train = []
 x_test = []
 y_test =  []
 
+
+# Convert data to PyTorch tensors and move to device
 x_train_tensor = torch.tensor(x_train, dtype=torch.float32).to(device)
 y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
 x_test_tensor = torch.tensor(x_test, dtype=torch.float32).to(device)
@@ -169,7 +179,7 @@ y_test_tensor = torch.tensor(y_test, dtype=torch.float32).to(device)
 rf_model = SoftRandomForest(n_trees=10, tree_depth=3).to(device)
 xgb_model = SoftXGBoost(n_estimators=20, tree_depth=3, learning_rate=0.1).to(device)
 
-criterion = nn.MSELoss()
+criterion = nn.MSELoss() # Mean Squared Error Loss
 optimizer_rf = optim.Adam(rf_model.parameters(), lr=0.01)
 optimizer_xgb = optim.Adam(xgb_model.parameters(), lr=0.01)
 
