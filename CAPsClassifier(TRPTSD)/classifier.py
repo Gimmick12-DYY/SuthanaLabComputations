@@ -6,7 +6,7 @@ This module implements a classifier model using a stacking approach with XGBoost
 
 import torch
 import torch.nn as nn
-import torch.optim
+import torch.optim as optim
 import numpy as np
 import random
 import matplotlib
@@ -150,3 +150,43 @@ def evaluate_model(model, x, y):
 
 ## Example Usage, this is where the data is loaded and the models are trained and evaluated
 
+# Dummy data for illustration purposes
+# Replace this with actual data loading and preprocessing
+x_train = []
+y_train = []
+x_test = []
+y_test =  []
+
+x_train_tensor = torch.tensor(x_train, dtype=torch.float32).to(device)
+y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
+x_test_tensor = torch.tensor(x_test, dtype=torch.float32).to(device)
+y_test_tensor = torch.tensor(y_test, dtype=torch.float32).to(device)
+
+
+# Initializing the Random Forest and XGBoost models
+# Assuming x_train, y_train, x_test, y_test are numpy arrays with appropriate shapes
+rf_model = SoftRandomForest(n_trees=10, tree_depth=3).to(device)
+xgb_model = SoftXGBoost(n_estimators=20, tree_depth=3, learning_rate=0.1).to(device)
+
+criterion = nn.MSELoss()
+optimizer_rf = optim.Adam(rf_model.parameters(), lr=0.01)
+optimizer_xgb = optim.Adam(xgb_model.parameters(), lr=0.01)
+
+print("Training Soft Random Forest...")
+loss_rf = train_model(rf_model, optimizer_rf, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
+print("Training Soft XGBoost...")
+loss_xgb = train_model(xgb_model, optimizer_xgb, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
+
+# Evaluate models on test set
+rf_preds, rf_test_loss = evaluate_model(rf_model, x_test_tensor, y_test_tensor)
+xgb_preds, xgb_test_loss = evaluate_model(xgb_model, x_test_tensor, y_test_tensor)
+print(f"Soft Random Forest Test MSE: {rf_test_loss:.4f}")
+print(f"Soft XGBoost Test MSE: {xgb_test_loss:.4f}")
+
+# Initializing Stacking Fusion Model
+stacking_model = StackingFusionModel(rf_model, xgb_model).to(device)
+optimizer_stack = optim.Adam(stacking_model.parameters(), lr=0.01)
+print("Training Stacking Fusion Model...")
+loss_stack = train_model(stacking_model, optimizer_stack, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
+stacking_preds, stacking_test_loss = evaluate_model(stacking_model, x_test_tensor, y_test_tensor)
+print(f"Stacking Fusion Test MSE: {stacking_test_loss:.4f}")
