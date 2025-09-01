@@ -408,6 +408,7 @@ def main():
     if all_daily_metrics and all_enhanced_data:
         create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, unique_labels)
     
+    # Final output message
     print(f"\nFiles saved:")
     for label in unique_labels:
         print(f"  - CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{label}_daily_cosinor_metrics.csv")
