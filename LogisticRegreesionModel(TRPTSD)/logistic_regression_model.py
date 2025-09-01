@@ -58,3 +58,28 @@ def train_model(X, y):
     accuracy = model.score(X_test, y_test)
     print(f"Model Accuracy: {accuracy:.2f}")
     return model
+
+def predict(model, X_new):
+    """
+    Make predictions using the trained model.
+    Parameters:
+    model (LogisticRegression): Trained logistic regression model.
+    X_new (pd.DataFrame): New data for prediction.
+    Returns:
+    np.ndarray: Predicted values.
+    """
+    return model.predict(X_new)
+
+# Example usage
+if __name__ == "__main__":
+    trptsd_path = 'data/trptsd_data.csv'
+    lfp_path = 'data/lfp_data.csv'    
+    trptsd_data, lfp_data = load_data(trptsd_path, lfp_path)
+    X, y = preprocess_data(trptsd_data, lfp_data)
+    model = train_model(X, y)
+    # Example prediction on new data
+    X_new = X.sample(5) # Replace with actual new data
+    predictions = predict(model, X_new)
+    print("Predictions:", predictions)
+
+    
