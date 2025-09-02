@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-
+from sklearn.metrics import roc_curve, roc_auc_score
+import matplotlib.pyplot as plt
 
 
 # Data Loading and Preprocessing
@@ -71,7 +72,7 @@ def predict(model, X_new):
     return model.predict(X_new)
 
 # Example usage
-if __name__ == "__main__":
+if __name__ == "__main__":  
     trptsd_path = 'data/trptsd_data.csv'
     lfp_path = 'data/lfp_data.csv'    
     trptsd_data, lfp_data = load_data(trptsd_path, lfp_path)
