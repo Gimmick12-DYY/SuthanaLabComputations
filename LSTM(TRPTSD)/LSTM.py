@@ -13,3 +13,8 @@ import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 from sklearn.model_selection import KFold
 from sklearn.utils import shuffle
+
+def load_data (data_path):
+    data = np.load(data_path, allow_pickle=True)
+    return data
+
