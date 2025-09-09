@@ -1,4 +1,6 @@
 """
+Usage of LSTM analyisis for TR-PTSD data.
+This is another model attempt for analyzing the time-series data provdided.
 
 """
 
