@@ -112,7 +112,7 @@ if __name__ == "__main__":
     trptsd_path = 'data/trptsd_data.csv'
     lfp_path = 'data/lfp_data.csv'    
     trptsd_data, lfp_data = load_data(trptsd_path, lfp_path)
-    X, y = preprocess_data(trptsd_data, lfp_data)
+    X, y = prepare_data_for_logistic(trptsd_data, lfp_data)
     model, X_test, y_test = train_model(X, y)
     # Example prediction on new data
     X_new = X.sample(5) # Replace with actual new data
