@@ -10,38 +10,34 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, roc_auc_score
 import matplotlib.pyplot as plt
 
+# Data Loading Step (Same as Cosinor)
+def load_data(path):
+    """
+    Load and preprocess cosinor data from a CSV file.
+    Assumes the file contains a 'Region start time' column, 'Pattern A Channel 2' column, and 'Label' column.
+    Returns a DataFrame with added 'date' and 'hour' columns.
+    """
+    df = pd.read_csv(path)
+    df['Region start time'] = pd.to_datetime(df['Region start time'])
+    df['date'] = df['Region start time'].dt.date
+    df['hour'] = df['Region start time'].dt.hour
+    if 'Unnamed: 0' in df.columns:
+        df = df.drop('Unnamed: 0', axis=1)
+    return df
 
-# Data Loading and Preprocessing
-def load_data(trptsd_path, lfp_path):
+def prepare_data_for_logistic(df):
     """
-    Load TRPTSD and LFP data from CSV files.
-    
-    Parameters:
-    trptsd_path (str): Path to the TRPTSD data CSV file.
-    lfp_path (str): Path to the LFP data CSV file.
-    
-    Returns:
-    pd.DataFrame, pd.DataFrame: Loaded TRPTSD and LFP data.
+    Prepare data for Logistic regression analysis by grouping by date.
+    Returns a list of daily dataframes.
     """
-    trptsd_data = pd.read_csv(trptsd_path)
-    lfp_data = pd.read_csv(lfp_path)
-    return trptsd_data, lfp_data
-
-def preprocess_data(trptsd_data, lfp_data):
-    """
-    Preprocess the TRPTSD and LFP data for modeling.    
-    Parameters:
-    trptsd_data (pd.DataFrame): TRPTSD data.
-    lfp_data (pd.DataFrame): LFP data.
-    Returns:
-    pd.DataFrame, pd.Series: Features and target variable for modeling.
-    """
-    # Example preprocessing: Align data by timestamp and handle missing values
-    merged_data = pd.merge(trptsd_data, lfp_data, on='timestamp')
-    merged_data = merged_data.dropna()
-    X = merged_data.drop(columns=['timestamp', 'lfp_signal'])
-    y = merged_data['lfp_signal']
-    return X, y
+    daily_data = []
+    for date, group in df.groupby('date'):
+        daily_df = group.copy()
+        daily_df['test'] = date.strftime('%Y-%m-%d')
+        daily_df['x'] = daily_df['hour']
+        daily_df['y'] = daily_df['Pattern A Channel 2']
+        daily_data.append(daily_df)
+    return daily_data
 
 # Model Training and Evaluation
 def train_model(X, y):
