@@ -11,6 +11,7 @@ import numpy as np
 import random
 import matplotlib as plt
 import os
+import pandas as pd
 
 torch.manual_seed(42)
 np.random.seed(42)
