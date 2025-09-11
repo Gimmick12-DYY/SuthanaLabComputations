@@ -109,7 +109,7 @@ def plot_roc_curve(model, X_test, y_test, title="ROC Curve", save_path=None, sho
 
 # Example usage
 if __name__ == "__main__":  
-    trptsd_path = 'data/trptsd_data.csv'
+    trptsd_path = 'data/RNS_G_Full_output.csv'
     lfp_path = 'data/lfp_data.csv'    
     trptsd_data, lfp_data = load_data(trptsd_path, lfp_path)
     X, y = prepare_data_for_logistic(trptsd_data, lfp_data)
