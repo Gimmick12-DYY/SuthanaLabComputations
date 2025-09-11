@@ -19,6 +19,37 @@ random.seed(42)
 
 device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Data loading and preparation process
+# More details need to be changed when full data received
+def load_data(path):
+    """
+    Load and preprocess cosinor data from a CSV file.
+    Assumes the file contains a 'Region start time' column, 'Pattern A Channel 2' column, and 'Label' column.
+    Returns a DataFrame with added 'date' and 'hour' columns.
+    """
+    df = pd.read_csv(path)
+    df['Region start time'] = pd.to_datetime(df['Region start time'])
+    df['date'] = df['Region start time'].dt.date
+    df['hour'] = df['Region start time'].dt.hour
+    if 'Unnamed: 0' in df.columns:
+        df = df.drop('Unnamed: 0', axis=1)
+    return df
+
+def prepare_data_for_logistic(df):
+    """
+    Prepare data for Logistic regression analysis by grouping by date.
+    Returns a list of daily dataframes.
+    """
+    daily_data = []
+    for date, group in df.groupby('date'):
+        daily_df = group.copy()
+        daily_df['test'] = date.strftime('%Y-%m-%d') # Cleaning for the time syntax (YYYY-MM-DD)
+        daily_df['x'] = daily_df['hour']
+        daily_df['y'] = daily_df['Pattern A Channel 2']
+        daily_data.append(daily_df)
+    return daily_data
+
+
 # This the Decision Tree Model used in the stacking ensemble
 class SoftDecisionTree(nn.Module):
     """Individual Decision Tree Model used in Random Forest and XGBoost."""
