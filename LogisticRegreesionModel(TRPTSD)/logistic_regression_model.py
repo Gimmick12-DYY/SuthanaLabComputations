@@ -33,7 +33,7 @@ def prepare_data_for_logistic(df):
     daily_data = []
     for date, group in df.groupby('date'):
         daily_df = group.copy()
-        daily_df['test'] = date.strftime('%Y-%m-%d')
+        daily_df['test'] = date.strftime('%Y-%m-%d') # Cleaning for the time syntax (YYYY-MM-DD)
         daily_df['x'] = daily_df['hour']
         daily_df['y'] = daily_df['Pattern A Channel 2']
         daily_data.append(daily_df)
@@ -124,6 +124,6 @@ if __name__ == "__main__":
         X_test,
         y_test,
         title="Logistic Regression ROC",
-        save_path=None,  # e.g., "outputs/logistic_regression_roc.png"
+        save_path=None,
         show_plot=True
     )
