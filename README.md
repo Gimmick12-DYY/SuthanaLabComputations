@@ -4,7 +4,7 @@ Research code for the Suthana Lab (Duke): rhythm analysis, time-series modeling,
 
 ## Repository layout
 
----
+```
 SuthanaLabComputations/
 ├─ CAPsClassifier(TRPTSD)/
 ├─ CosinorRegressionModel(TRPTSD)/
@@ -12,9 +12,7 @@ SuthanaLabComputations/
 ├─ LogisticRegreesionModel(TRPTSD)/
 ├─ LICENSE
 └─ README.md
-
-
----
+```
 
 ## Projects
 
