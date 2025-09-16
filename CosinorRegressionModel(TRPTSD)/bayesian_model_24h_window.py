@@ -21,6 +21,8 @@ import arviz as az
 import matplotlib.pyplot as plt
 import os
 from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin
+from pathlib import Path
+import glob
 
 np.seterr(divide='ignore')
 
@@ -30,16 +32,34 @@ os.makedirs('CosinorRegressionModel/plots/24h_window', exist_ok=True)
 # --- Data Loading and Preparation ---
 def load_data(path):
     """
-    Load and preprocess cosinor data from a CSV file.
-    Assumes the file contains a 'Region start time' column and a 'Pattern A Channel 2' column. Same format required for all subjects.
-    Returns a DataFrame with added 'date' and 'hour' columns.
+    Load and preprocess all cosinor data from a directory.
+    Able to handle multiple datasets in the directory.
+    Nameing rules:
+    - TRPTSD data: 'RNS_{Patient Letter}_{Pattern Name + Channel No.}_Full_output.csv
+    - Example: 'RNS_A_B2_Full_output.csv' for Patient A, Pattern B Channel 2
+    Assumes the file contains a 'Region start time' column, 'Pattern {} Channel {}' column, and 'Label' column.
+    The function enumerates through all files in the directory and processes them into a list of DataFrames.
+    Returns a set of DataFrames with added normalized 'date' and 'hour' columns for further analysis.
     """
-    df = pd.read_csv(path)
-    df['Region start time'] = pd.to_datetime(df['Region start time'])
-    df['date'] = df['Region start time'].dt.date
-    df['hour'] = df['Region start time'].dt.hour
-    df = df.drop('Unnamed: 0', axis=1)
-    return df
+
+    folder_dir = Path(path) # Reads in the data folder directory
+    if folder_dir.exists() and folder_dir.is_dir():
+        dataset_list = sorted([str(fp) for fp in folder_dir.glob("RNS_*_Full*.csv")])
+    else:
+        patients = glob(str(path))
+        dataset_list = sorted(patients if patients else [str(path)])
+
+    all_dfs = []
+    for dataset in dataset_list:
+        data_name = Path(dataset).name
+        df = pd.read_csv(dataset)
+        df['Region start time'] = pd.to_datetime(df['Region start time'])
+        df['date'] = df['Region start time'].dt.date
+        df['hour'] = df['Region start time'].dt.hour
+        df = df.drop('Unnamed: 0', axis=1)
+        all_dfs.append(df)
+    
+    return all_dfs
 
 # Load pre- and post-condition data (update paths as needed)
 pre_data = load_data("/Users/dyy/Documents/Project Repo/SuthanaLabComputations/CosinorRegressionModel(TRPTSD)/data/RNS_G_Pre_output.csv")
