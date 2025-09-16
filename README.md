@@ -1,26 +1,29 @@
 # SuthanaLabComputations
-This repository contains the projects developed within the Suthana Lab Group at Duke University:
 
-## Structure
+Research code for the Suthana Lab (Duke): rhythm analysis, time-series modeling, and clinical ML experiments on the TR-PTSD cohort.
+
+## Repository layout
 
 ```
-.
-├── TR-PTSD/           # Notebooks and scripts for the Cosinor Regression Model used for Analysis
-├── /     # 
-├── LICENSE
-└── README.md
+SuthanaLabComputations/
+├─ CAPsClassifier(TRPTSD)/
+├─ CosinorRegressionModel(TRPTSD)/
+├─ LSTM(TRPTSD)/
+├─ LogisticRegreesionModel(TRPTSD)/
+├─ LICENSE
+└─ README.md
 ```
 
-### **TR-PTSD/**: 
-Construction of a Cosinor Regression Model that analyzes the daily recordings of TR-PTSD patients. The model utilizes a multiple-component Cosine Linear Regression algorithm to fit the daily rhythmic data. Special adjustments to the original CosinorPy package were implemented to adapt to the specialized datasets.
+## Projects
 
-Key files:
-   - `cosinor_24h.ipynb` – Notebook for fitting daily (24-hour) rhythmic models.
-   - `cosinor_7ds.ipynb` – Notebook for fitting weekly (7-day) rhythmic models.
-   - `cosinormodel.ipynb` – Core notebook for model parsing and general usage.
-   - `cosinormodel_backbone.ipynb` – Backbone logic used for modular development and heatmap extension.
-   - `compare_csv_rows.py` – Script for comparing and validating CSV data rows across datasets.
-   - `matrix_analysis.py` – Additional analysis tools based on matrix logic.
-   - `cosinordemo/` – Demo folder for CosinorPy-based baseline testing.
-   
-### **/**: 
+### 1) CosinorRegressionModel(TRPTSD)
+Multiple-component cosinor modeling for daily/weekly rhythmicity. The notebooks/scripts implement cosinor fits, heat-map style summaries, and utilities for dataset checks/comparisons. (This folder contains the cosinor notebooks and helper scripts you’ve been using.)
+
+### 2) CAPsClassifier(TRPTSD)
+Classification experiments related to the TR-PTSD cohort (CAPS-related labels/features). Use the provided notebooks or scripts in this folder for feature prep and model training/evaluation.
+
+### 3) LSTM(TRPTSD)
+Sequence models for longitudinal recordings (e.g., symptom or wearable time series). Includes notebooks/scripts for data windowing, model definition, and training loops.
+
+### 4) LogisticRegreesionModel(TRPTSD)
+Baseline logistic-regression pipelines for tabular features. Useful for sanity checks and feature importance baselines.
