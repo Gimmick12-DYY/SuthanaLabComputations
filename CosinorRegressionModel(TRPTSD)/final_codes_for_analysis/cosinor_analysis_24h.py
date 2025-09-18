@@ -18,6 +18,7 @@ import os
 from CosinorPy import file_parser, cosinor, cosinor1, cosinor_nonlin # Some adjustment may be needed for CosinorPy (cosinor)
 from pathlib import Path
 import glob
+import seaborn as sns
 
 
 np.seterr(divide='ignore')
@@ -32,44 +33,117 @@ def load_data(path):
     - Example: 'RNS_A_B2_Full_output.csv' for Patient A, Pattern B Channel 2
     Assumes the file contains a 'Region start time' column, 'Pattern {} Channel {}' column, and 'Label' column.
     The function enumerates through all files in the directory and processes them into a list of DataFrames.
-    Returns a set of DataFrames with added normalized 'date' and 'hour' columns for further analysis.
+    Returns a single concatenated DataFrame with added normalized 'date' and 'hour' columns for further analysis.
     """
 
-    folder_dir = Path(path) # Reads in the data folder directory
+    folder_dir = Path(path)
     if folder_dir.exists() and folder_dir.is_dir():
         dataset_list = sorted([str(fp) for fp in folder_dir.glob("RNS_*_Full*.csv")])
     else:
-        patients = glob(str(path))
-        dataset_list = sorted(patients if patients else [str(path)])
+        dataset_list = sorted(glob.glob(str(path))) or [str(path)]
 
-    all_dfs = []
+    frames = []
     for dataset in dataset_list:
         data_name = Path(dataset).name
-        patient_id = data_name[4]           # Extracts 'A' from 'RNS_A_B2_Full_output.csv'
-        pattern_channel = data_name[6:-16]  # Extracts 'B2' from 'RNS_A_B2_Full_output.csv'
+        # Extract identifiers if they follow the naming scheme
+        patient_id = data_name[4] if len(data_name) > 4 else None
+        pattern_channel = data_name[6:-16] if len(data_name) > 16 else None
+
         df = pd.read_csv(dataset)
         df['Region start time'] = pd.to_datetime(df['Region start time'])
         df['date'] = df['Region start time'].dt.date
         df['hour'] = df['Region start time'].dt.hour
-        df = df.drop('Unnamed: 0', axis=1)
-        key = f'data_{patient_id}_{pattern_channel}'
-        all_dfs[key] = df                   # So that we can access data as all_dfs['data_A_B2']
-    
-    return all_dfs
+        if 'Unnamed: 0' in df.columns:
+            df = df.drop('Unnamed: 0', axis=1)
+        if patient_id is not None:
+            df['Patient'] = patient_id
+        if pattern_channel is not None:
+            df['PatternChannel'] = pattern_channel
+        frames.append(df)
 
-def prepare_data(df):
+    if not frames:
+        raise FileNotFoundError(f"No datasets found for path: {path}")
+
+    return pd.concat(frames, ignore_index=True)
+
+def prepare_data_for_cosinor(df, y_column):
     """
     Function used to prepare the data for Cosinor Regression
     This re-label the Pattern Channel column to y and hours to x to accommodate CosinorPy function input requirements
     """
     daily_data = []
+    if y_column not in df.columns:
+        raise KeyError(f"Expected y column '{y_column}' not found in dataframe")
+
     for date, group in df.groupby('date'):
         daily_df = group.copy()
         daily_df['test'] = date.strftime('%Y-%m-%d')
         daily_df['x'] = daily_df['hour']
-        daily_df['y'] = daily_df['Pattern A Channel 2']
+        daily_df['y'] = daily_df[y_column]
         daily_data.append(daily_df)
     return daily_data
+
+def parse_dataset_info(file_path):
+    """
+    Parse file name like 'RNS_{Patient}_{PatternLetter}{Channel}_Full_output.csv' to extract identifiers
+    Returns: key_name, y_column_name (e.g., 'A_B2' -> ('A_B2', 'Pattern B Channel 2'))
+    """
+    name = Path(file_path).name
+    # Example: RNS_A_B2_Full_output.csv
+    parts = name.split('_')
+    patient = parts[1] if len(parts) > 1 else 'Unknown'
+    pattern_chan = parts[2] if len(parts) > 2 else 'A2'
+    pattern_letter = pattern_chan[0]
+    channel_num = ''.join(ch for ch in pattern_chan[1:] if ch.isdigit()) or '2'
+    key_name = f"{patient}_{pattern_letter}{channel_num}"
+    y_col = f"Pattern {pattern_letter} Channel {channel_num}"
+    return key_name, y_col
+
+def create_plots_for_file(daily_metrics_df, key_name, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Ensure date is sorted
+    dm = daily_metrics_df.copy()
+    dm = dm.sort_values('date')
+
+    metrics = [('mean_amplitude', 'Amplitude'), ('mean_acrophase', 'Acrophase'), ('mean_mesor', 'Mesor')]
+    for col, label in metrics:
+        plt.figure(figsize=(12, 6))
+        plt.plot(dm['date'], dm[col], marker='o', linewidth=2)
+        plt.title(f'{label} Over Time - {key_name}', fontsize=14, fontweight='bold')
+        plt.xlabel('Date')
+        plt.ylabel(label)
+        plt.grid(True, alpha=0.3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, f'{key_name}_daily_{col}.png'), dpi=300, bbox_inches='tight')
+        plt.close()
+
+    # Distributions
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12))
+    for ax, (col, label) in zip(axes, metrics):
+        data = dm[col].dropna()
+        if len(data) > 0:
+            ax.hist(data, bins=15, alpha=0.8)
+        ax.set_title(f'{label} Distribution - {key_name}', fontweight='bold')
+        ax.set_xlabel(label)
+        ax.set_ylabel('Frequency')
+        ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, f'{key_name}_daily_metrics_distributions.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # Correlation heatmap (if enough data)
+    numeric_cols = ['mean_amplitude', 'mean_acrophase', 'mean_mesor', 'p_value', 'r_squared']
+    available_cols = [c for c in numeric_cols if c in dm.columns]
+    if len(available_cols) > 1 and dm[available_cols].dropna().shape[0] > 1:
+        corr = dm[available_cols].corr()
+        plt.figure(figsize=(6, 5))
+        sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, square=True, fmt='.2f')
+        plt.title(f'Correlation Matrix - {key_name}', fontweight='bold')
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, f'{key_name}_correlation_matrix.png'), dpi=300, bbox_inches='tight')
+        plt.close()
 
 # --- Model calculation ---
 def calculate_daily_cosinor_metrics(daily_data, period=24):
@@ -327,113 +401,61 @@ def main():
     """
     Main function to process data by different label values.
     """
-    # File path
-    data_path = "CosinorRegressionModel(TRPTSD)/data/RNS_G_Full_output.csv"
+    # Data path: directory with multiple CSVs or a single CSV path
+    data_path = "CosinorRegressionModel(TRPTSD)/data/Data_Cosinor_09.15.25"
     
     # Create output directories
     os.makedirs('CosinorRegressionModel(TRPTSD)/outputs', exist_ok=True)
     os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/daily_metrics', exist_ok=True)
     os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data', exist_ok=True)
+    os.makedirs('CosinorRegressionModel(TRPTSD)/plots/daily_metrics', exist_ok=True)
     
-    # Load the full dataset
-    print("Loading full dataset...")
-    full_data = load_data(data_path)
-    
-    # Get unique labels
-    unique_labels = full_data['Label'].unique()
-    print(f"Found {len(unique_labels)} unique labels: {unique_labels}")
-    
-    # Process each label separately
-    all_enhanced_data = []
-    all_daily_metrics = []
-    
-    for label in unique_labels:
-        print(f"\nProcessing label: {label}")
-        
-        # Filter data for this label
-        label_data = full_data[full_data['Label'] == label].copy()
-        
-        if len(label_data) == 0:
-            print(f"No data found for label {label}")
-            continue
-            
-        print(f"  Data shape: {label_data.shape}")
-        print(f"  Date range: {label_data['date'].min()} to {label_data['date'].max()}")
-        
-        # Calculate daily metrics for this label
-        daily_data = prepare_data_for_cosinor(label_data)
+    # Enumerate CSVs and process each file individually
+    folder_dir = Path(data_path)
+    dataset_list = sorted([str(fp) for fp in folder_dir.glob("RNS_*_Full*.csv")])
+    if not dataset_list:
+        # Fallback to any CSVs
+        dataset_list = sorted([str(fp) for fp in folder_dir.glob("*.csv")])
+    if not dataset_list:
+        raise FileNotFoundError(f"No CSV files found in {data_path}")
+
+    print(f"Found {len(dataset_list)} datasets to process.")
+
+    for dataset in dataset_list:
+        key_name, y_col = parse_dataset_info(dataset)
+        print(f"\nProcessing dataset: {Path(dataset).name} -> key '{key_name}', y column '{y_col}'")
+
+        df = pd.read_csv(dataset)
+        df['Region start time'] = pd.to_datetime(df['Region start time'])
+        df['date'] = df['Region start time'].dt.date
+        df['hour'] = df['Region start time'].dt.hour
+        if 'Unnamed: 0' in df.columns:
+            df = df.drop('Unnamed: 0', axis=1)
+
+        # Prepare and compute metrics
+        daily_data = prepare_data_for_cosinor(df, y_col)
         daily_metrics = calculate_daily_cosinor_metrics(daily_data, period=24)
-        
-        # Add label information to metrics
-        daily_metrics['Label'] = label
-        
-        # Map metrics back to hourly data
-        enhanced_data = map_metrics_to_hourly_data(label_data, daily_metrics)
-        
-        # Save results for this label
-        daily_metrics.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{label}_daily_cosinor_metrics.csv', index=False)
-        enhanced_data.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv', index=False)
-        
-        # Collect for combined analysis
-        all_enhanced_data.append(enhanced_data)
-        all_daily_metrics.append(daily_metrics)
-        
-        print(f"  {len(daily_metrics)} days processed")
-        print(f"  Enhanced data shape: {enhanced_data.shape}")
-    
-    # Combine all enhanced data
-    if all_enhanced_data:
-        combined_enhanced_data = pd.concat(all_enhanced_data, ignore_index=True)
-        combined_enhanced_data = combined_enhanced_data.sort_values(['Label', 'Region start time'])
-        combined_enhanced_data.to_csv('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv', index=False)
-        
-        print(f"\nCombined enhanced data shape: {combined_enhanced_data.shape}")
-    
-    # Combine all daily metrics
-    if all_daily_metrics:
-        combined_daily_metrics = pd.concat(all_daily_metrics, ignore_index=True)
-        combined_daily_metrics = combined_daily_metrics.sort_values(['Label', 'date'])
-        combined_daily_metrics.to_csv('CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv', index=False)
-        
-        print(f"Combined daily metrics shape: {combined_daily_metrics.shape}")
-    
-    # Create summary report
-    print("\n" + "="*50)
-    print("SUMMARY REPORT")
-    print("="*50)
-    
-    for label in unique_labels:
-        label_metrics = combined_daily_metrics[combined_daily_metrics['Label'] == label]
-        if len(label_metrics) > 0:
-            print(f"\nLabel '{label}' daily metrics summary:")
-            print(f"  Total days: {len(label_metrics)}")
-            print(f"  Days with valid amplitude: {label_metrics['mean_amplitude'].notna().sum()}")
-            print(f"  Days with valid acrophase: {label_metrics['mean_acrophase'].notna().sum()}")
-            print(f"  Days with valid mesor: {label_metrics['mean_mesor'].notna().sum()}")
-            
-            # Show some statistics
-            if label_metrics['mean_amplitude'].notna().sum() > 0:
-                print(f"  Mean amplitude: {label_metrics['mean_amplitude'].mean():.3f} ± {label_metrics['mean_amplitude'].std():.3f}")
-                print(f"  Mean acrophase: {label_metrics['mean_acrophase'].mean():.3f} ± {label_metrics['mean_acrophase'].std():.3f}")
-                print(f"  Mean mesor: {label_metrics['mean_mesor'].mean():.3f} ± {label_metrics['mean_mesor'].std():.3f}")
-    
-    # Show sample of combined enhanced data
-    if all_enhanced_data:
-        print(f"\nSample of combined enhanced data:")
-        sample_cols = ['Region start time', 'Pattern A Channel 2', 'Label', 'CAPS_score', 'mean_amplitude', 'mean_acrophase', 'mean_mesor']
-        print(combined_enhanced_data[sample_cols].head(10))
-    
-    # Create plots
-    if all_daily_metrics and all_enhanced_data:
-        create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, unique_labels)
-    
-    # Final output message
-    print(f"\nFiles saved:")
-    for label in unique_labels:
-        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{label}_daily_cosinor_metrics.csv")
-        print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/{label}_enhanced_with_cosinor_metrics.csv")
-    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/all_labels_daily_cosinor_metrics.csv")
-    print(f"  - CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/all_labels_enhanced_with_cosinor_metrics.csv")
+        enhanced_data = map_metrics_to_hourly_data(df, daily_metrics)
+
+        # Output directories per dataset
+        per_out_dir = os.path.join('CosinorRegressionModel(TRPTSD)', 'outputs', key_name)
+        os.makedirs(per_out_dir, exist_ok=True)
+
+        # Save spreadsheets
+        daily_metrics.to_csv(os.path.join(per_out_dir, f'{key_name}_daily_cosinor_metrics.csv'), index=False)
+        enhanced_data.to_csv(os.path.join(per_out_dir, f'{key_name}_enhanced_with_cosinor_metrics.csv'), index=False)
+
+        # Also preserve previous structure outputs (optional)
+        os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/daily_metrics', exist_ok=True)
+        os.makedirs('CosinorRegressionModel(TRPTSD)/outputs/enhanced_data', exist_ok=True)
+        daily_metrics.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/daily_metrics/{key_name}_daily_cosinor_metrics.csv', index=False)
+        enhanced_data.to_csv(f'CosinorRegressionModel(TRPTSD)/outputs/enhanced_data/{key_name}_enhanced_with_cosinor_metrics.csv', index=False)
+
+        # Plots per dataset
+        plots_dir = os.path.join(per_out_dir, 'plots')
+        create_plots_for_file(daily_metrics, key_name, plots_dir)
+
+        print(f"  Saved results to {per_out_dir}")
 
 if __name__ == "__main__":
     main() 
