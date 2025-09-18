@@ -76,6 +76,10 @@ def calculate_daily_cosinor_metrics(daily_data, period=24):
     """
     Calculate Cosinor metrics for each day.
     Returns a DataFrame with daily metrics.
+    Parameters:
+    daily_data (list of pd.DataFrame): List of daily dataframes.
+    period (int): Period for the cosinor model, default is 24 hours.
+    24-hour period is used to capture daily rhythms.
     """
     daily_metrics = []
     
