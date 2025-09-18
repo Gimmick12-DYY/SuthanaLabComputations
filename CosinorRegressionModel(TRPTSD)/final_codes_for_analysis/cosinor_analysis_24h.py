@@ -78,7 +78,7 @@ def prepare_data_for_cosinor(df, y_column):
     for date, group in df.groupby('date'):
         daily_df = group.copy()
         daily_df['test'] = date.strftime('%Y-%m-%d')
-        daily_df['x'] = daily_df['hour']
+        daily_df['x'] = daily_df['date']
         daily_df['y'] = daily_df[y_column]
         daily_data.append(daily_df)
     return daily_data
