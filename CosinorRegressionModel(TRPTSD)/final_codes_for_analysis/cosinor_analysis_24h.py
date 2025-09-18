@@ -107,12 +107,30 @@ def create_plots_for_file(daily_metrics_df, key_name, out_dir):
     dm = dm.sort_values('date')
 
     metrics = [('mean_amplitude', 'Amplitude'), ('mean_acrophase', 'Acrophase'), ('mean_mesor', 'Mesor')]
-    for col, label in metrics:
+    # Determine label column for coloring (prefer 'Label', then 'label', else derive YYYY-MM)
+    label_col = 'Label' if 'Label' in dm.columns else ('label' if 'label' in dm.columns else None)
+    if label_col is None:
+        dm['Label'] = pd.to_datetime(dm['date']).astype('datetime64[ns]').dt.strftime('%Y-%m')
+        label_col = 'Label'
+
+    unique_labels = [lab for lab in dm[label_col].dropna().unique()]
+    palette = sns.color_palette('tab10', n_colors=max(3, len(unique_labels) or 3))
+    color_map = {lab: palette[i % len(palette)] for i, lab in enumerate(unique_labels)}
+
+    for col, metric_name in metrics:
         plt.figure(figsize=(12, 6))
-        plt.plot(dm['date'], dm[col], marker='o', linewidth=2)
-        plt.title(f'{label} Over Time - {key_name}', fontsize=14, fontweight='bold')
+        if unique_labels:
+            for lab in unique_labels:
+                sub = dm[dm[label_col] == lab].sort_values('date')
+                if sub.empty:
+                    continue
+                plt.plot(sub['date'], sub[col], marker='o', linewidth=2, label=str(lab), color=color_map[lab])
+            plt.legend(title='Label', fontsize=9)
+        else:
+            plt.plot(dm['date'], dm[col], marker='o', linewidth=2)
+        plt.title(f'{metric_name} Over Time - {key_name}', fontsize=14, fontweight='bold')
         plt.xlabel('Date')
-        plt.ylabel(label)
+        plt.ylabel(metric_name)
         plt.grid(True, alpha=0.3)
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -435,6 +453,17 @@ def main():
         # Prepare and compute metrics
         daily_data = prepare_data_for_cosinor(df, y_col)
         daily_metrics = calculate_daily_cosinor_metrics(daily_data, period=24)
+        # Propagate label (month) into metrics for colored plots
+        if 'Label' in df.columns:
+            # Map each date's majority label
+            label_by_date = df.groupby('date')['Label'].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else s.iloc[0])
+            daily_metrics['Label'] = daily_metrics['date'].map(label_by_date)
+        elif 'label' in df.columns:
+            label_by_date = df.groupby('date')['label'].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else s.iloc[0])
+            daily_metrics['Label'] = daily_metrics['date'].map(label_by_date)
+        else:
+            # Derive YYYY-MM from date
+            daily_metrics['Label'] = pd.to_datetime(daily_metrics['date']).astype('datetime64[ns]').dt.strftime('%Y-%m')
         enhanced_data = map_metrics_to_hourly_data(df, daily_metrics)
 
         # Output directories per dataset
