@@ -273,14 +273,25 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
     metrics_to_plot = ['mean_amplitude', 'mean_acrophase', 'mean_mesor']
     metric_names = ['Amplitude', 'Acrophase', 'Mesor']
     
+    # Dynamically scale figure width by date span to make x-axis longer when needed
+    try:
+        num_days = pd.to_datetime(combined_daily_metrics['date']).nunique()
+    except Exception:
+        num_days = combined_daily_metrics['date'].nunique()
+    base_width = max(24, int(num_days / 3))
+    fig_width = max(2400, base_width * 2)  # 2x wider, with a higher cap
+
     for metric, metric_name in zip(metrics_to_plot, metric_names):
-        plt.figure(figsize=(15, 8))
+        plt.figure(figsize=(200, 8))
         
         for label in unique_labels:
             label_data = combined_daily_metrics[combined_daily_metrics['Label'] == label]
             if len(label_data) > 0:
-                plt.plot(label_data['date'], label_data[metric], 
-                        marker='o', linewidth=2, markersize=4, label=f'Label {label}')
+                # Downsample to avoid overplotting if too many points
+                n = len(label_data)
+                step = max(1, n // 3000)
+                plt.plot(label_data['date'].iloc[::step], label_data[metric].iloc[::step],
+                        marker='o', linewidth=1.2, markersize=2.5, label=f'Label {label}', alpha=0.9)
         
         plt.title(f'Daily {metric_name} Over Time by Label', fontsize=16, fontweight='bold')
         plt.xlabel('Date', fontsize=12)
@@ -294,7 +305,7 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
         plt.show()
     
     # 2. Box plots comparing metrics across labels
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(24, 6))
     
     for i, (metric, metric_name) in enumerate(zip(metrics_to_plot, metric_names)):
         # Prepare data for box plot
@@ -332,7 +343,7 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
             if len(available_cols) > 1:
                 corr_matrix = label_data[available_cols].corr()
                 
-                plt.figure(figsize=(8, 6))
+                plt.figure(figsize=(10, 8))
                 sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, 
                            square=True, fmt='.2f')
                 plt.title(f'Correlation Matrix - Label {label}', fontweight='bold')
@@ -342,7 +353,7 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
                 plt.show()
     
     # 4. Distribution plots for each metric
-    fig, axes = plt.subplots(3, 1, figsize=(12, 15))
+    fig, axes = plt.subplots(3, 1, figsize=(20, 15))
     
     for i, (metric, metric_name) in enumerate(zip(metrics_to_plot, metric_names)):
         for label in unique_labels:
@@ -362,7 +373,7 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
     plt.show()
     
     # 5. Summary statistics plot
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(24, 8))
     
     # Calculate summary statistics for each label
     summary_stats = []
@@ -388,7 +399,7 @@ def create_daily_metrics_plots(combined_daily_metrics, combined_enhanced_data, u
         x = np.arange(len(summary_df))
         width = 0.25
         
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(24, 8))
         
         # Amplitude
         ax.bar(x - width, summary_df['Amplitude_Mean'], width, 
