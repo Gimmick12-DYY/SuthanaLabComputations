@@ -184,12 +184,23 @@ def plot_r2_replicate(r2df: pd.DataFrame, key_name: str, out_dir: str, split_ind
         return
     os.makedirs(out_dir, exist_ok=True)
 
-    if split_index is None:
-        split_index = len(r2df) // 2
-
-    # Prepare halves
-    left_df = r2df.iloc[:split_index].copy()
-    right_df = r2df.iloc[split_index:].copy()
+    # Prefer semantic split: pre (labels starting with 'B') vs post (starting with 'M')
+    has_labels = 'Label' in r2df.columns and r2df['Label'].notna().any()
+    if has_labels:
+        pre_mask = r2df['Label'].astype(str).str.startswith('B')
+        post_mask = r2df['Label'].astype(str).str.startswith('M')
+        left_df = r2df[pre_mask].copy()
+        right_df = r2df[post_mask].copy()
+        # For vertical guideline, pick first index of post if exists
+        if post_mask.any():
+            split_index = int(r2df[post_mask].iloc[0]['day_index'])
+        else:
+            split_index = len(r2df) // 2
+    else:
+        if split_index is None:
+            split_index = len(r2df) // 2
+        left_df = r2df.iloc[:split_index].copy()
+        right_df = r2df.iloc[split_index:].copy()
 
     # Smoothing via rolling mean
     def smooth(y, window):
@@ -208,8 +219,8 @@ def plot_r2_replicate(r2df: pd.DataFrame, key_name: str, out_dir: str, split_ind
     ax_vio = plt.subplot(gs[1])
 
     # Colors
-    col_left = '#f1c40f'  # yellow
-    col_right = '#2e86de'  # blue
+    col_left = '#f1c40f'  # yellow (Pre, B*)
+    col_right = '#2e86de'  # blue (Post, M*)
 
     # Scatter colored by month label
     if 'Label' in r2df.columns and r2df['Label'].notna().any():
@@ -224,11 +235,12 @@ def plot_r2_replicate(r2df: pd.DataFrame, key_name: str, out_dir: str, split_ind
         ax_main.scatter(r2df['day_index'], r2df['r2_pct'], s=16, alpha=0.7, color='gray')
 
     # Smoothed lines for pre/post
-    ax_main.plot(left_df['day_index'], left_smooth, color=col_left, linewidth=2)
-    ax_main.plot(right_df['day_index'], right_smooth, color=col_right, linewidth=2)
+    ax_main.plot(left_df['day_index'], left_smooth, color=col_left, linewidth=2, label='Pre (B*)')
+    ax_main.plot(right_df['day_index'], right_smooth, color=col_right, linewidth=2, label='Post (M*)')
 
     # Vertical split line
-    ax_main.axvline(split_index, color='#e84393', linestyle='--', linewidth=2)
+    if split_index is not None:
+        ax_main.axvline(split_index, color='#e84393', linestyle='--', linewidth=2)
 
     ax_main.set_title(f'Cosinor R² (%) over Time - {key_name}', fontsize=14, fontweight='bold')
     ax_main.set_xlabel('Day Index')
@@ -242,7 +254,7 @@ def plot_r2_replicate(r2df: pd.DataFrame, key_name: str, out_dir: str, split_ind
         pc.set_facecolor(col_left if i == 0 else col_right)
         pc.set_alpha(0.8)
     ax_vio.set_xticks([0, 1])
-    ax_vio.set_xticklabels(['Pre', 'Post'])
+    ax_vio.set_xticklabels(['Pre (B*)', 'Post (M*)'])
     ax_vio.set_ylabel('Cosinor R² (%)')
     ax_vio.grid(True, alpha=0.3)
 
