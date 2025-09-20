@@ -86,3 +86,44 @@ class LSTMModel(nn.Module):
         out = self.dropout(last_output)
         out = self.fc(out)
         return out
+    
+def train_model(model, train_data, val_data, num_epochs=20, batch_size=32, learning_rate=0.001):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    for epoch in range(num_epochs):
+        model.train()
+        train_data = shuffle(train_data)
+        for i in range(0, len(train_data), batch_size):
+            batch_indices = list(range(i, min(i + batch_size, len(train_data))))
+            sequences, labels, lengths = get_batch(train_data, batch_indices)
+
+            sequences = torch.tensor(sequences, dtype=torch.float32)
+            labels = torch.tensor(labels, dtype=torch.long)
+
+            optimizer.zero_grad()
+            outputs = model(sequences, lengths)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        val_labels = []
+        val_preds = []
+        with torch.no_grad():
+            for i in range(0, len(val_data), batch_size):
+                batch_indices = list(range(i, min(i + batch_size, len(val_data))))
+                sequences, labels, lengths = get_batch(val_data, batch_indices)
+
+                sequences = torch.tensor(sequences, dtype=torch.float32)
+                labels = torch.tensor(labels, dtype=torch.long)
+
+                outputs = model(sequences, lengths)
+                _, predicted = torch.max(outputs.data, 1)
+
+                val_labels.extend(labels.numpy())
+                val_preds.extend(predicted.numpy())
+
+        val_accuracy = accuracy_score(val_labels, val_preds)
+        val_f1 = f1_score(val_labels, val_preds, average='weighted')
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Val Accuracy: {val_accuracy:.4f}, Val F1: {val_f1:.4f}')
