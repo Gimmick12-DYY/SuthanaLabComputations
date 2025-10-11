@@ -7,3 +7,4 @@ CAPsClassifier(TRPTSD)/outputs/
 CAPsClassifier(TRPTSD)/data/
 LogisticRegressionModel(TRPTSD)/outputs/
 LogisticRegressionModel(TRPTSD)/data/
+CAPsClassifier(TRPTSD)/data
