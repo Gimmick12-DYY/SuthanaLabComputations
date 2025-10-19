@@ -1,314 +1,443 @@
 """
-Classifier Model for CAPs Result and Test Metrics
+Classifier Model for CAPS score using stacked soft tree ensemble (RandomForest + XGBoost-like)
 
-This module implements a classifier model using a stacking approach with XGBoost and RandomForest.
+This script now adapts to your data schema. It will:
+- Load the CSV (default: CosinorRegressionModel(TRPTSD)/data/RNS_G_Full_output.csv)
+- Auto-detect the CAPS target column
+- Build features from available columns:
+  * All numeric columns except the target and obvious index/time columns
+  * Optionally: include cosinor/linearAR/entropy columns by name pattern if present
+  * Time features derived from Region start time (hour, dow, sin/cos) if present
+  * One-hot encode categorical columns like Label
+- Train soft RandomForest and soft XGBoost-like models and a stacking meta-model
+- Evaluate with MSE and plots
 """
+
+from __future__ import annotations
+import os
+import math
+import random
+from typing import List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-import random
-import matplotlib as plt
-import os
-import pandas as pd
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
+import matplotlib.pyplot as plt
+
+# Reproducibility
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# -------------------------
+# Data Loading/Prep Helpers
+# -------------------------
+
+def _detect_target_column(cols: List[str], provided: Optional[str] = None) -> str:
+    if provided and provided in cols:
+        return provided
+    candidates = [
+        "CAPS_score", "CAPS", "caps", "CAPSScore", "CAPS_total", "CAPS Total",
+        "caps_score", "caps_total",
+    ]
+    for c in candidates:
+        if c in cols:
+            return c
+    raise ValueError(
+        f"Could not find CAPS target column. Looked for {candidates}. Columns available: {cols}"
+    )
 
 
-device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Data loading and preparation process
-# More details need to be changed when full data received
-def load_data(path):
-    """
-    Load and preprocess cosinor data from a CSV file.
-    Assumes the file contains a 'Region start time' column, 'Pattern A Channel 2' column, and 'Label' column.
-    Returns a DataFrame with added 'date' and 'hour' columns.
-    """
-    df = pd.read_csv(path)
-    df['Region start time'] = pd.to_datetime(df['Region start time'])
-    df['date'] = df['Region start time'].dt.date
-    df['hour'] = df['Region start time'].dt.hour
-    if 'Unnamed: 0' in df.columns:
-        df = df.drop('Unnamed: 0', axis=1)
+def _add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    if "Region start time" in df.columns:
+        ts = pd.to_datetime(df["Region start time"], errors="coerce")
+        df = df.copy()
+        df["hour"] = ts.dt.hour
+        df["dow"] = ts.dt.dayofweek
+        # Cyclic encoding for hour of day
+        df["sin_hour"] = np.sin(2 * math.pi * df["hour"] / 24.0)
+        df["cos_hour"] = np.cos(2 * math.pi * df["hour"] / 24.0)
     return df
 
-def prepare_data_for_logistic(df):
-    """
-    Prepare data for Logistic regression analysis by grouping by date.
-    Returns a list of daily dataframes.
-    """
-    daily_data = []
-    for date, group in df.groupby('date'):
-        daily_df = group.copy()
-        daily_df['test'] = date.strftime('%Y-%m-%d') # Cleaning for the time syntax (YYYY-MM-DD)
-        daily_df['x'] = daily_df['hour']
-        daily_df['y'] = daily_df['Pattern A Channel 2']
-        daily_data.append(daily_df)
-    return daily_data
+
+def _select_feature_columns(
+    df: pd.DataFrame,
+    target_col: str,
+    include_patterns: Optional[List[str]] = None,
+) -> List[str]:
+    # Exclude obvious non-feature columns
+    exclude = {target_col, "Region start time", "date", "Unnamed: 0"}
+
+    cols = []
+    if include_patterns:
+        pats = [p.lower() for p in include_patterns]
+        for c in df.columns:
+            if c in exclude:
+                continue
+            cl = c.lower()
+            if any(cl.startswith(p) or (p in cl) for p in pats):
+                cols.append(c)
+    else:
+        # Default: all numeric columns except target and excluded
+        for c in df.select_dtypes(include=[np.number]).columns:
+            if c not in exclude:
+                cols.append(c)
+        # If we ended with no numeric features (unlikely), fall back to anything except excluded
+        if not cols:
+            cols = [c for c in df.columns if c not in exclude]
+
+    # Ensure we actually have features
+    if not cols:
+        raise ValueError("No feature columns selected. Check your include_patterns or data.")
+    return cols
 
 
-# This the Decision Tree Model used in the stacking ensemble
+def load_caps_dataset(
+    csv_path: str,
+    target_col: Optional[str] = None,
+    include_patterns: Optional[List[str]] = None,
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    df = pd.read_csv(csv_path)
+
+    # Drop obvious index-like columns
+    if "Unnamed: 0" in df.columns:
+        df = df.drop(columns=["Unnamed: 0"])  # auto index column from some exports
+
+    # Add time-derived features if timestamp exists
+    df = _add_time_features(df)
+
+    # Detect target
+    tcol = _detect_target_column(df.columns.tolist(), provided=target_col)
+
+    # Build base feature set by pattern or numeric default
+    base_cols = _select_feature_columns(df, tcol, include_patterns=include_patterns)
+    base_df = df[base_cols].copy()
+
+    # Include categorical columns (object or category) by one-hot, except target
+    cat_cols = [c for c in base_df.columns if base_df[c].dtype == object or str(base_df[c].dtype).startswith("category")]
+    if cat_cols:
+        base_df = pd.get_dummies(base_df, columns=cat_cols, drop_first=True)
+
+    # Impute missing values with median per column
+    for c in base_df.columns:
+        if base_df[c].isna().any():
+            base_df[c] = base_df[c].fillna(base_df[c].median())
+
+    # Target values
+    y = df[tcol].values.astype(np.float32)
+    # Remove rows with nan targets
+    mask = ~np.isnan(y)
+    X = base_df.values[mask].astype(np.float32)
+    y = y[mask]
+
+    # y should be 2D for torch regression
+    y = y.reshape(-1, 1)
+
+    feature_names = base_df.columns.tolist()
+    if X.shape[0] == 0 or X.shape[1] == 0:
+        raise ValueError(f"Empty X after preprocessing: X={X.shape}, y={y.shape}")
+
+    return X, y, feature_names
+
+
+def train_test_split_array(
+    X: np.ndarray, y: np.ndarray, test_size: float = 0.2, seed: int = SEED
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    n = X.shape[0]
+    idx = np.arange(n)
+    rng = np.random.RandomState(seed)
+    rng.shuffle(idx)
+    n_test = max(1, int(round(test_size * n)))
+    test_idx = idx[:n_test]
+    train_idx = idx[n_test:]
+    return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+
+# -------------------
+# Soft Tree Ensembles
+# -------------------
+
 class SoftDecisionTree(nn.Module):
-    """Individual Decision Tree Model used in Random Forest and XGBoost."""
-    def __init__(self, depth=3):
-        super(SoftDecisionTree, self).__init__()
+    """Soft decision tree with logistic gates over n_features.
+    Note: This is a differentiable surrogate; it is not the exact RF/XGBoost algorithm.
+    """
+    def __init__(self, n_features: int, depth: int = 3):
+        super().__init__()
         self.depth = depth
-        self.n_leaves = 2 ** depth                  # Number of leaf nodes  
-        self.n_internal_nodes = 2 ** depth - 1      # Number of internal decision nodes
+        self.n_features = n_features
+        self.n_leaves = 2 ** depth
+        self.n_internal_nodes = 2 ** depth - 1
+        # One linear gate per internal node over all features
+        self.decision_nodes = nn.ModuleList([nn.Linear(n_features, 1) for _ in range(self.n_internal_nodes)])
+        # Leaf values
+        self.leaf_values = nn.Parameter(torch.randn(self.n_leaves, 1) * 0.01)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch = x.size(0)
+        # Compute gate probabilities at all internal nodes
+        gates = []
+        for node in self.decision_nodes:
+            p = torch.sigmoid(node(x))  # (batch, 1)
+            gates.append(p)
+        gates = torch.stack(gates, dim=1)  # (batch, n_internal, 1)
 
-        # Decision nodes parameters
-        self.decision_nides = nn.ModuleList([nn.Linear(1, 1) for _ in range(self.n_internal_nodes)])
-
-        # Leaf nodes parameters
-        self.leaf_values = nn.Parameter(torch.randn(self.n_leaves, 1))
-
-    def forward(self, x):
-        batch_size = x.size(0)
-        decision_probs = []
-
-        for node in self.decision_nides:
-            p = torch.sigmoid(node(x))
-            decision_probs.append(p)
-        
-        decision_probs = torch.stack(decision_probs, dim=1)  # Shape: (batch_size, n_internal_nodes, 1)
-
+        # Compute probability of each leaf for each sample
         leaf_probs = []
-
         for leaf in range(self.n_leaves):
+            # Binary path bits from root to this leaf
             path = []
-            index = leaf
-
+            idx = leaf
             for _ in range(self.depth):
-                path.append(index % 2)
-                index //= 2
+                path.append(idx % 2)
+                idx //= 2
+            path = path[::-1]
 
-            path = path[::-1]  # Reverse to get the path from root to leaf
-            # Calculate the probability of reaching this leaf
-            prob = torch.ones(batch_size, 1).to(device)
+            prob = torch.ones(batch, 1, device=x.device)
             node_index = 0
             for decision in path:
-                p = decision_probs[:, node_index].unsqueeze(1)
+                p = gates[:, node_index]
                 if decision == 0:
                     prob = prob * (1 - p)
                 else:
                     prob = prob * p
                 node_index += 1
             leaf_probs.append(prob)
-        
-        leaf_probs = torch.cat(leaf_probs, dim=1)  # Shape: (batch_size, n_leaves)
-        output = torch.matmul(leaf_probs, self.leaf_values)  # Shape: (batch_size, 1)
-        return output   
-    
-# This is the Random Forest Model used in the stacking ensemble
+        leaf_probs = torch.cat(leaf_probs, dim=1)  # (batch, n_leaves)
+        out = torch.matmul(leaf_probs, self.leaf_values)  # (batch, 1)
+        return out
+
+
 class SoftRandomForest(nn.Module):
-    """Random Forest Model using soft decision trees."""
-    def __init__(self, n_trees=10, tree_depth=3):
-        super(SoftRandomForest, self).__init__()
-        self.n_trees = n_trees
-        self.trees = nn.ModuleList([SoftDecisionTree(depth=tree_depth) for _ in range(n_trees)])
-    
-    def forward(self, x):
-        preds = [tree(x) for tree in self.trees]
-        preds = torch.stack(preds, dim=0)  # Shape: (n_trees, batch_size, 1)
-        return torch.mean(preds, dim=0)  # Shape: (batch_size, 1)
+    """Ensemble of soft decision trees; outputs the mean prediction."""
+    def __init__(self, n_features: int, n_trees: int = 10, tree_depth: int = 3):
+        super().__init__()
+        self.trees = nn.ModuleList([SoftDecisionTree(n_features, depth=tree_depth) for _ in range(n_trees)])
 
-# This is the XGBoost Model used in the stacking ensemble
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        preds = [t(x) for t in self.trees]
+        preds = torch.stack(preds, dim=0)  # (n_trees, batch, 1)
+        return preds.mean(dim=0)
+
+
 class SoftXGBoost(nn.Module):
-    """XGBoost Model using soft decision trees."""
-    def __init__(self, n_estimators=10, tree_depth=3, learning_rate=0.1):
-        super(SoftXGBoost, self).__init__()
-        self.n_estimators = n_estimators
+    """Additive ensemble of soft decision trees; simplistic gradient boosting surrogate.
+    Note: This is a naive additive model; for production, use real XGBoost.
+    """
+    def __init__(self, n_features: int, n_estimators: int = 10, tree_depth: int = 3, learning_rate: float = 0.1):
+        super().__init__()
         self.learning_rate = learning_rate
+        self.trees = nn.ModuleList([SoftDecisionTree(n_features, depth=tree_depth) for _ in range(n_estimators)])
 
-        self.trees = nn.ModuleList([SoftDecisionTree(depth=tree_depth) for _ in range(n_estimators)])
-    
-    def forward(self, x):
-        preds = torch.zeros(x.size(0), 1).to(device)
-        for tree in self.trees:
-            preds += self.learning_rate * tree(x)
-        return preds
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = torch.zeros(x.size(0), 1, device=x.device)
+        for t in self.trees:
+            out = out + self.learning_rate * t(x)
+        return out
 
-# This is the Stacking Fusion Model that combines Random Forest and XGBoost predictions
-# The fusion model is a simple feedforward neural network
 
 class StackingFusionModel(nn.Module):
-    """
-    Stacking Fusion Model combining Random Forest and XGBoost predictions. 
-    The fusion model is a simple feedforward neural network.
-    """
-    def __init__(self, rf_model, xgb_model):
-        super(StackingFusionModel, self).__init__()
-        self.rf_model = rf_model
-        self.xgb_model = xgb_model
-
-        # Meta model
-        self.meta_model = nn.Sequential(
+    """Simple meta-model over RF and XGB predictions."""
+    def __init__(self, rf_model: nn.Module, xgb_model: nn.Module):
+        super().__init__()
+        self.rf = rf_model
+        self.xgb = xgb_model
+        self.meta = nn.Sequential(
             nn.Linear(2, 8),
             nn.ReLU(),
             nn.Linear(8, 1)
         )
-    
-    def forward(self, x):
-        rf_preds = self.rf_model(x)
-        xgboost_preds = self.xgb_model(x)
-        
-        fusion_input = torch.cat((rf_preds, xgboost_preds), dim=1)
-        fusion_output = self.meta_model(fusion_input)
-        return fusion_output
-    
 
-# Training and Evaluation Functions
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        rf_pred = self.rf(x)
+        xgb_pred = self.xgb(x)
+        fused_in = torch.cat([rf_pred, xgb_pred], dim=1)
+        return self.meta(fused_in)
 
-def train_model(model, optimizer, criterion, x, y, num_epochs=300):
-    """Train the model and return the training loss history."""
+# ---------------------------
+# Training / Evaluation Utils
+# ---------------------------
+
+def train_model(model: nn.Module, optimizer, criterion, x, y, num_epochs: int = 300):
     model.train()
-    loss_list = []
-
+    hist = []
     for epoch in range(num_epochs):
         optimizer.zero_grad()
-        outputs = model(x)
-        loss = criterion(outputs, y)
+        out = model(x)
+        loss = criterion(out, y)
         loss.backward()
         optimizer.step()
-        loss_list.append(loss.item())
+        hist.append(loss.item())
         if (epoch + 1) % 50 == 0:
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
-    return loss_list
+            print(f"Epoch {epoch+1}/{num_epochs} - loss: {loss.item():.4f}")
+    return hist
 
-def evaluate_model(model, x, y):
-    """Evaluate the model and return predictions and loss."""
+
+def evaluate_model(model: nn.Module, x, y):
     model.eval()
     with torch.no_grad():
         preds = model(x)
-        loss = nn.MSELoss()(preds, y)
-    
-    return preds.cpu().numpy(), loss.item()
+        mse = nn.MSELoss()(preds, y).item()
+        y_np = y.detach().cpu().numpy().reshape(-1)
+        p_np = preds.detach().cpu().numpy().reshape(-1)
+        # R^2
+        ss_res = float(np.sum((y_np - p_np) ** 2))
+        ss_tot = float(np.sum((y_np - y_np.mean()) ** 2))
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return p_np, mse, r2
 
-## Example Usage, this is where the data is loaded and the models are trained and evaluated
+# -----
+# Main
+# -----
 
-# Dummy data for illustration purposes
-# Replace this with actual data loading and preprocessing
-x_train = []
-y_train = []
-x_test = []
-y_test =  []
+def main(
+    csv_path: Optional[str] = None,
+    target_col: Optional[str] = None,
+    include_patterns: Optional[List[str]] = None,
+    n_trees: int = 20,
+    n_estimators: int = 30,
+    tree_depth: int = 3,
+    epochs: int = 300,
+    lr_base: float = 0.01,
+):
+    if csv_path is None:
+        # Default to repo-relative sample path
+        here = os.path.dirname(os.path.abspath(__file__))
+        csv_path = os.path.normpath(os.path.join(here, "..", "CosinorRegressionModel(TRPTSD)", "data", "RNS_G_Full_output.csv"))
+
+    # Default feature patterns: target cosinor/linearAR/entropy and a couple of known columns if present
+    if include_patterns is None:
+        include_patterns = [
+            "cosinor", "linearar", "linar", "entropy",
+            "pattern a channel 2", "episode starts with rx", "hour", "sin_hour", "cos_hour", "dow",
+        ]
+
+    print(f"Loading dataset: {csv_path}")
+    X, y, feat_names = load_caps_dataset(csv_path, target_col=target_col, include_patterns=include_patterns)
+    print(f"Data shape: X={X.shape}, y={y.shape}, features={len(feat_names)}")
+
+    X_train, X_test, y_train, y_test = train_test_split_array(X, y, test_size=0.2, seed=SEED)
+
+    # Tensors
+    xtr = torch.tensor(X_train, dtype=torch.float32, device=device)
+    ytr = torch.tensor(y_train, dtype=torch.float32, device=device)
+    xte = torch.tensor(X_test, dtype=torch.float32, device=device)
+    yte = torch.tensor(y_test, dtype=torch.float32, device=device)
+
+    n_features = X_train.shape[1]
+
+    rf = SoftRandomForest(n_features=n_features, n_trees=n_trees, tree_depth=tree_depth).to(device)
+    xgb = SoftXGBoost(n_features=n_features, n_estimators=n_estimators, tree_depth=tree_depth, learning_rate=0.1).to(device)
+
+    crit = nn.MSELoss()
+    opt_rf = optim.Adam(rf.parameters(), lr=lr_base)
+    opt_xgb = optim.Adam(xgb.parameters(), lr=lr_base)
+
+    print("Training Soft RandomForest...")
+    loss_rf = train_model(rf, opt_rf, crit, xtr, ytr, num_epochs=epochs)
+
+    print("Training Soft XGBoost-like...")
+    loss_xgb = train_model(xgb, opt_xgb, crit, xtr, ytr, num_epochs=epochs)
+
+    # Evaluate base models
+    rf_preds, rf_mse, rf_r2 = evaluate_model(rf, xte, yte)
+    xgb_preds, xgb_mse, xgb_r2 = evaluate_model(xgb, xte, yte)
+    print(f"RF Test MSE: {rf_mse:.4f} | R2: {rf_r2:.4f}")
+    print(f"XGB Test MSE: {xgb_mse:.4f} | R2: {xgb_r2:.4f}")
+
+    # Stacking
+    stack = StackingFusionModel(rf, xgb).to(device)
+    opt_stack = optim.Adam(stack.parameters(), lr=lr_base)
+    print("Training Stacking Fusion Model...")
+    loss_stack = train_model(stack, opt_stack, crit, xtr, ytr, num_epochs=epochs)
+
+    stack_preds, stack_mse, stack_r2 = evaluate_model(stack, xte, yte)
+    print(f"Stack Test MSE: {stack_mse:.4f} | R2: {stack_r2:.4f}")
+
+    # ------------
+    # Visualizations
+    # ------------
+    plt.figure(figsize=(16, 12))
+
+    # 1) Training loss curves
+    ax1 = plt.subplot(2, 2, 1)
+    ax1.plot(loss_rf, label="RF Loss", color="red")
+    ax1.plot(loss_xgb, label="XGB Loss", color="blue")
+    ax1.plot(loss_stack, label="Stack Loss", color="green")
+    ax1.set_title("Training Loss Curves")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("MSE Loss")
+    ax1.grid(True)
+    ax1.legend()
+
+    # 2) True vs Predicted (Stack)
+    ax2 = plt.subplot(2, 2, 2)
+    ax2.scatter(y_test.reshape(-1), rf_preds, alpha=0.6, label="RF", color="red", s=25)
+    ax2.scatter(y_test.reshape(-1), xgb_preds, alpha=0.6, label="XGB", color="blue", s=25)
+    ax2.scatter(y_test.reshape(-1), stack_preds, alpha=0.6, label="Stack", color="green", s=25)
+    y_min = float(min(y_test.min(), rf_preds.min(), xgb_preds.min(), stack_preds.min()))
+    y_max = float(max(y_test.max(), rf_preds.max(), xgb_preds.max(), stack_preds.max()))
+    ax2.plot([y_min, y_max], [y_min, y_max], "k--", linewidth=1)
+    ax2.set_title("True vs Predicted (Test)")
+    ax2.set_xlabel("True CAPS")
+    ax2.set_ylabel("Predicted CAPS")
+    ax2.grid(True)
+    ax2.legend()
+
+    # 3) Residuals histogram (Stack)
+    ax3 = plt.subplot(2, 2, 3)
+    resid_stack = y_test.reshape(-1) - stack_preds
+    ax3.hist(resid_stack, bins=20, color="purple", alpha=0.7)
+    ax3.set_title("Stack Residuals Distribution")
+    ax3.set_xlabel("Error (True - Pred)")
+    ax3.set_ylabel("Count")
+    ax3.grid(True)
+
+    # 4) Absolute error curves (sorted by pred)
+    ax4 = plt.subplot(2, 2, 4)
+    idx_sort = np.argsort(stack_preds)
+    ax4.plot(np.abs(y_test.reshape(-1)[idx_sort] - rf_preds[idx_sort]), "r--", label="RF |AE|")
+    ax4.plot(np.abs(y_test.reshape(-1)[idx_sort] - xgb_preds[idx_sort]), "b--", label="XGB |AE|")
+    ax4.plot(np.abs(y_test.reshape(-1)[idx_sort] - stack_preds[idx_sort]), "g--", label="Stack |AE|")
+    ax4.set_title("Absolute Error (sorted by Stack pred)")
+    ax4.set_xlabel("Sample Index (sorted)")
+    ax4.set_ylabel("|Error|")
+    ax4.grid(True)
+    ax4.legend()
+
+    plt.tight_layout()
+
+    # Save figures
+    try:
+        out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+        os.makedirs(out_dir, exist_ok=True)
+        fig_path = os.path.join(out_dir, "classifier_analysis.png")
+        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+
+        fig = plt.gcf()
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+        renderer = fig.canvas.get_renderer()
+        for i, ax in enumerate(fig.axes, start=1):
+            try:
+                bbox = ax.get_tightbbox(renderer)
+                bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
+                sub_path = os.path.join(out_dir, f"classifier_analysis_subplot{i}.png")
+                fig.savefig(sub_path, dpi=300, bbox_inches=bbox_inches)
+            except Exception as e:
+                print(f"Warning: could not save subplot {i}: {e}")
+        print(f"Saved plots to: {out_dir}")
+    except Exception as e:
+        print(f"Warning: could not save figures: {e}")
+
+    plt.show()
 
 
-# Convert data to PyTorch tensors and move to device
-x_train_tensor = torch.tensor(x_train, dtype=torch.float32).to(device)
-y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
-x_test_tensor = torch.tensor(x_test, dtype=torch.float32).to(device)
-y_test_tensor = torch.tensor(y_test, dtype=torch.float32).to(device)
-
-
-# Initializing the Random Forest and XGBoost models
-# Assuming x_train, y_train, x_test, y_test are numpy arrays with appropriate shapes
-rf_model = SoftRandomForest(n_trees=10, tree_depth=3).to(device)
-xgb_model = SoftXGBoost(n_estimators=20, tree_depth=3, learning_rate=0.1).to(device)
-
-criterion = nn.MSELoss() # Mean Squared Error Loss
-optimizer_rf = optim.Adam(rf_model.parameters(), lr=0.01)
-optimizer_xgb = optim.Adam(xgb_model.parameters(), lr=0.01)
-
-print("Training Soft Random Forest...")
-loss_rf = train_model(rf_model, optimizer_rf, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
-print("Training Soft XGBoost...")
-loss_xgb = train_model(xgb_model, optimizer_xgb, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
-
-# Evaluate models on test set
-rf_preds, rf_test_loss = evaluate_model(rf_model, x_test_tensor, y_test_tensor)
-xgb_preds, xgb_test_loss = evaluate_model(xgb_model, x_test_tensor, y_test_tensor)
-print(f"Soft Random Forest Test MSE: {rf_test_loss:.4f}")
-print(f"Soft XGBoost Test MSE: {xgb_test_loss:.4f}")
-
-# Initializing Stacking Fusion Model
-stacking_model = StackingFusionModel(rf_model, xgb_model).to(device)
-optimizer_stack = optim.Adam(stacking_model.parameters(), lr=0.01)
-print("Training Stacking Fusion Model...")
-loss_stack = train_model(stacking_model, optimizer_stack, criterion, x_train_tensor, y_train_tensor, n_epochs=300)
-stacking_preds, stacking_test_loss = evaluate_model(stacking_model, x_test_tensor, y_test_tensor)
-print(f"Stacking Fusion Test MSE: {stacking_test_loss:.4f}")
-
-# Analysis and Visualizations
-# Plotting training loss curves and prediction comparisons
-plt.figure(figsize=(16, 12))
-
-# Subplot 1: Training Loss Curve
-plt.subplot(2, 2, 1)
-# This is a simple line plot for training loss curves which only analyzes on the loss of XGBoost model, can add more.
-plt.plot(loss_xgb, color='red', label="XGBoost Loss")
-plt.title("Training Loss Curve", fontsize=14)
-plt.xlabel("Iterations", fontsize=12)
-plt.ylabel("Loss", fontsize=12)
-plt.legend()
-plt.grid(True)
-
-# Subplot 2: Prediction Comparison
-plt.subplot(2, 2, 2)
-# Sorting is required for smooth curve visualizations
-sorted_idx = np.argsort(x_test.squeeze())
-plt.scatter(x_test, y_test, color='orange', alpha=0.6, label="True Data", marker='o')
-plt.plot(x_test[sorted_idx], np.array(rf_preds)[sorted_idx], color='red', label="Random Forest", linewidth=2)
-plt.plot(x_test[sorted_idx], np.array(xgb_preds)[sorted_idx], color='blue', label="XGBoost", linewidth=2)
-plt.plot(x_test[sorted_idx], np.array(stacking_preds)[sorted_idx], color='green', label="Stacking Fusion", linewidth=2)
-plt.title("Prediction Comparison", fontsize=14)
-plt.xlabel("X", fontsize=12)
-plt.ylabel("Y", fontsize=12)
-plt.legend()
-plt.grid(True)
-
-# Subplot 3: Residual Distribution
-plt.subplot(2, 2, 3)
-# Fusion model residual = real - predicted
-residuals = y_test_tensor.cpu().numpy() - np.array(stacking_preds)
-plt.hist(residuals, bins=20, color='violet', alpha=0.7)
-plt.title("Residual Distribution", fontsize=14)
-plt.xlabel("Prediction Error", fontsize=12)
-plt.ylabel("Frequency", fontsize=12)
-plt.grid(True)
-
-# Subplot 4: Error Histogram Comparison
-plt.subplot(2, 2, 4)
-errors_rf = np.abs(y_test_tensor.cpu().numpy() - np.array(rf_preds))
-errors_xgb = np.abs(y_test_tensor.cpu().numpy() - np.array(xgb_preds))
-errors_stack = np.abs(y_test_tensor.cpu().numpy() - np.array(stacking_preds))
-plt.plot(x_test[sorted_idx], errors_rf[sorted_idx], color='red', linestyle='--', label="RF Error", linewidth=2)
-plt.plot(x_test[sorted_idx], errors_xgb[sorted_idx], color='blue', linestyle='--', label="XGB Error", linewidth=2)
-plt.plot(x_test[sorted_idx], errors_stack[sorted_idx], color='green', linestyle='--', label="Stacking Error", linewidth=2)
-plt.title("Error Histogram Comparison", fontsize=14)
-plt.xlabel("X", fontsize=12)
-plt.ylabel("Absolute Error", fontsize=12)
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-# Save composed figure and each subplot to outputs without altering original visualization code
-try:
-    os.makedirs('CAPsClassifier(TRPTSD)/outputs', exist_ok=True)
-    # Save the full 2x2 figure
-    plt.savefig('CAPsClassifier(TRPTSD)/outputs/classifier_analysis.png', dpi=300, bbox_inches='tight')
-
-    # Also save each subplot individually
-    fig = plt.gcf()
-    # Ensure renderer is ready for tightbbox computations
-    fig.canvas.draw_idle()
-    fig.canvas.flush_events()
-    renderer = fig.canvas.get_renderer()
-
-    for idx, ax in enumerate(fig.axes, start=1):
-        try:
-            bbox = ax.get_tightbbox(renderer)
-            # Convert from display to inches for bbox_inches
-            bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
-            outfile = f'CAPsClassifier(TRPTSD)/outputs/classifier_analysis_subplot{idx}.png'
-            fig.savefig(outfile, dpi=300, bbox_inches=bbox_inches)
-        except Exception as crop_err:
-            print(f"Warning: could not save subplot {idx}: {crop_err}")
-except Exception as e:
-    print(f"Warning: could not save figure(s): {e}")
-plt.show()
+if __name__ == "__main__":
+    # You can override csv_path/target_col via CLI by editing here or passing via environment
+    main()
