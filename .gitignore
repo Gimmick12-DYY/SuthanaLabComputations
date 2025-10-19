@@ -2,7 +2,6 @@
 # Files are ignored for data privacy and security reasons.
 CosinorRegressionModel(TRPTSD)/data/ 
 CosinorRegressionModel(TRPTSD)/plots/ 
-CosinorRegressionModel(TRPTSD)/outputs/ 
 CAPsClassifier(TRPTSD)/outputs/
 CAPsClassifier(TRPTSD)/data/
 LogisticRegressionModel(TRPTSD)/outputs/
