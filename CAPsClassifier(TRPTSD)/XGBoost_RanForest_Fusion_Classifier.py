@@ -27,6 +27,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+import time
 
 # Reproducibility
 SEED = 42
@@ -73,17 +75,15 @@ def _select_feature_columns(
     include_patterns: Optional[List[str]] = None,
 ) -> List[str]:
     # Exclude obvious non-feature columns
-    exclude = {target_col, "Region start time", "date", "Unnamed: 0"}
+    exclude = {target_col, "Region start time", "date", "Unnamed: 0", "Day", "Year_Month", 
+               "week", "CAPS_number", "CAPS_date", "Label"}
 
     cols = []
     if include_patterns:
-        pats = [p.lower() for p in include_patterns]
-        for c in df.columns:
-            if c in exclude:
-                continue
-            cl = c.lower()
-            if any(cl.startswith(p) or (p in cl) for p in pats):
-                cols.append(c)
+        # For processed data, use exact column name matching for better control
+        for pattern in include_patterns:
+            if pattern in df.columns and pattern not in exclude:
+                cols.append(pattern)
     else:
         # Default: all numeric columns except target and excluded
         for c in df.select_dtypes(include=[np.number]).columns:
@@ -96,7 +96,110 @@ def _select_feature_columns(
     # Ensure we actually have features
     if not cols:
         raise ValueError("No feature columns selected. Check your include_patterns or data.")
-    return cols
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_cols = []
+    for col in cols:
+        if col not in seen:
+            seen.add(col)
+            unique_cols.append(col)
+    
+    return unique_cols
+
+
+def load_multiple_patients_dataset(
+    data_dir: str = "data/Processed_data",
+    target_col: Optional[str] = None,
+    include_patterns: Optional[List[str]] = None,
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Load and combine data from multiple patient files"""
+    import glob
+    
+    # Find all processed files
+    processed_files = glob.glob(os.path.join(data_dir, "processed_*.csv"))
+    
+    if not processed_files:
+        raise ValueError(f"No processed files found in {data_dir}")
+    
+    print(f"Found {len(processed_files)} patient files: {[os.path.basename(f) for f in processed_files]}")
+    
+    all_dfs = []
+    print("Loading patient data files...")
+    for i, file_path in enumerate(processed_files, 1):
+        print(f"  [{i}/{len(processed_files)}] Loading {os.path.basename(file_path)}...")
+        df = pd.read_csv(file_path)
+        print(f"      Loaded {len(df):,} rows")
+        all_dfs.append(df)
+    
+    # Combine all data
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    print(f"Combined dataset shape: {combined_df.shape}")
+    
+    # Use the combined dataset for feature extraction
+    return _process_combined_dataset(combined_df, target_col, include_patterns)
+
+
+def _process_combined_dataset(
+    df: pd.DataFrame,
+    target_col: Optional[str] = None,
+    include_patterns: Optional[List[str]] = None,
+) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Process the combined dataset for training"""
+    
+    # Drop obvious index-like columns
+    if "Unnamed: 0" in df.columns:
+        df = df.drop(columns=["Unnamed: 0"])
+
+    # Add time-derived features if timestamp exists
+    df = _add_time_features(df)
+
+    # Detect target
+    tcol = _detect_target_column(df.columns.tolist(), provided=target_col)
+
+    # Build base feature set by pattern or numeric default
+    base_cols = _select_feature_columns(df, tcol, include_patterns=include_patterns)
+    base_df = df[base_cols].copy()
+
+    # Include categorical columns (object or category) by one-hot, except target
+    cat_cols = [c for c in base_df.columns if base_df[c].dtype == object or str(base_df[c].dtype).startswith("category")]
+    if cat_cols:
+        base_df = pd.get_dummies(base_df, columns=cat_cols, drop_first=True)
+
+    # Impute missing values with median per column
+    for c in base_df.columns:
+        if base_df[c].isna().any():
+            median_val = base_df[c].median()
+            base_df[c] = base_df[c].fillna(median_val)
+            print(f"Filled {base_df[c].isna().sum()} missing values in {c} with median: {median_val}")
+    
+    # Remove constant features (same value for all samples)
+    constant_features = []
+    for c in base_df.columns:
+        if base_df[c].nunique() <= 1:
+            constant_features.append(c)
+            print(f"WARNING: Removing constant feature {c} (all values: {base_df[c].iloc[0]})")
+    
+    if constant_features:
+        base_df = base_df.drop(columns=constant_features)
+        print(f"Removed {len(constant_features)} constant features: {constant_features}")
+
+    # Target values - CAPS_score is discrete (classification problem)
+    y = df[tcol].values.astype(np.int32)
+    
+    # Remove rows with nan targets
+    mask = ~np.isnan(y)
+    X = base_df.values[mask].astype(np.float32)
+    y = y[mask]
+
+    # y should be 2D for torch regression
+    y = y.reshape(-1, 1)
+
+    feature_names = base_df.columns.tolist()
+    if X.shape[0] == 0 or X.shape[1] == 0:
+        raise ValueError(f"Empty X after preprocessing: X={X.shape}, y={y.shape}")
+
+    return X, y, feature_names
 
 
 def load_caps_dataset(
@@ -129,9 +232,21 @@ def load_caps_dataset(
     for c in base_df.columns:
         if base_df[c].isna().any():
             base_df[c] = base_df[c].fillna(base_df[c].median())
+    
+    # Remove constant features (same value for all samples)
+    constant_features = []
+    for c in base_df.columns:
+        if base_df[c].nunique() <= 1:
+            constant_features.append(c)
+            print(f"WARNING: Removing constant feature {c} (all values: {base_df[c].iloc[0]})")
+    
+    if constant_features:
+        base_df = base_df.drop(columns=constant_features)
+        print(f"Removed {len(constant_features)} constant features: {constant_features}")
 
-    # Target values
-    y = df[tcol].values.astype(np.float32)
+    # Target values - CAPS_score is discrete (classification problem)
+    y = df[tcol].values.astype(np.int32)
+    
     # Remove rows with nan targets
     mask = ~np.isnan(y)
     X = base_df.values[mask].astype(np.float32)
@@ -263,18 +378,35 @@ class StackingFusionModel(nn.Module):
 # Training / Evaluation Utils
 # ---------------------------
 
-def train_model(model: nn.Module, optimizer, criterion, x, y, num_epochs: int = 300):
+def train_model(model: nn.Module, optimizer, criterion, x, y, num_epochs: int = 300, model_name: str = "Model"):
     model.train()
     hist = []
-    for epoch in range(num_epochs):
+    
+    print(f"\nTraining {model_name} for {num_epochs} epochs...")
+    start_time = time.time()
+    
+    # Create progress bar
+    pbar = tqdm(range(num_epochs), desc=f"Training {model_name}", 
+                bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+    
+    for epoch in pbar:
         optimizer.zero_grad()
         out = model(x)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
         hist.append(loss.item())
+        
+        # Update progress bar with current loss
+        pbar.set_postfix({'Loss': f'{loss.item():.4f}'})
+        
+        # Print detailed info every 50 epochs
         if (epoch + 1) % 50 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs} - loss: {loss.item():.4f}")
+            elapsed = time.time() - start_time
+            print(f"\n  Epoch {epoch+1}/{num_epochs} - Loss: {loss.item():.4f} - Time: {elapsed:.1f}s")
+    
+    total_time = time.time() - start_time
+    print(f"{model_name} training completed in {total_time:.1f} seconds")
     return hist
 
 
@@ -305,23 +437,57 @@ def main(
     epochs: int = 300,
     lr_base: float = 0.01,
 ):
+    print("Starting CAPS Score Prediction with XGBoost + RandomForest Fusion")
+    print("=" * 70)
+    total_start_time = time.time()
     if csv_path is None:
-        # Default to repo-relative sample path
+        # Default to processed data path
         here = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.normpath(os.path.join(here, "..", "CosinorRegressionModel(TRPTSD)", "data", "RNS_G_Full_output.csv"))
+        csv_path = os.path.normpath(os.path.join(here, "data", "Processed_data", "processed_RNS_A_B2_Complete.csv"))
 
-    # Default feature patterns: target cosinor/linearAR/entropy and a couple of known columns if present
+    # Optimized feature patterns for processed cosinor data
     if include_patterns is None:
         include_patterns = [
-            "cosinor", "linearar", "linar", "entropy",
-            "pattern a channel 2", "episode starts with rx", "hour", "sin_hour", "cos_hour", "dow",
+            # Core cosinor features (most important)
+            "cosinor_mean_amplitude", "cosinor_mean_acrophase", "cosinor_mean_mesor",
+            "cosinor_multiday_mesor", "cosinor_multiday_amplitude", "cosinor_multiday_acrophase_hours",
+            "cosinor_multiday_r_squared", "cosinor_multiday_r_squared_pct",
+            
+            # LinearAR features (autoregressive components)
+            "linearAR_Daily_Fit", "linearAR_Weekly_Avg_Daily_Fit", "linearAR_Predicted", "linearAR_Fit_Residual",
+            
+            # Entropy features (complexity measures)
+            "Sample Entropy", "weekly_sampen",
+            
+            # Neural activity patterns
+            "Pattern A Channel 1", "Pattern B Channel 1", "Pattern A Channel 2", "Pattern B Channel 2",
+            "Episode starts", "Episode starts with RX", "Long episodes",
+            
+            # Time features
+            "Hour", "Hour_polar", "Hour_degree", "Month",
+            
+            # Device metrics
+            "Magnet swipes", "Saturations", "Hist hours", "Mag sat hours"
         ]
 
-    print(f"Loading dataset: {csv_path}")
-    X, y, feat_names = load_caps_dataset(csv_path, target_col=target_col, include_patterns=include_patterns)
+    # Load dataset - use multiple patients by default if csv_path is default
+    if csv_path and "processed_RNS_A_B2_Complete.csv" in csv_path:
+        print("Loading combined dataset from all patients...")
+        here = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(here, "data", "Processed_data")
+        X, y, feat_names = load_multiple_patients_dataset(data_dir, target_col=target_col, include_patterns=include_patterns)
+    else:
+        print(f"Loading single dataset: {csv_path}")
+        X, y, feat_names = load_caps_dataset(csv_path, target_col=target_col, include_patterns=include_patterns)
+    
     print(f"Data shape: X={X.shape}, y={y.shape}, features={len(feat_names)}")
+    print(f"Feature names: {feat_names}")
+    print(f"Target (CAPS_score) range: {y.min():.2f} to {y.max():.2f}")
 
+    print("\nSplitting data into train/test sets...")
     X_train, X_test, y_train, y_test = train_test_split_array(X, y, test_size=0.2, seed=SEED)
+    print(f"Training set: {X_train.shape[0]:,} samples")
+    print(f"Test set: {X_test.shape[0]:,} samples")
 
     # Tensors
     xtr = torch.tensor(X_train, dtype=torch.float32, device=device)
@@ -339,10 +505,10 @@ def main(
     opt_xgb = optim.Adam(xgb.parameters(), lr=lr_base)
 
     print("Training Soft RandomForest...")
-    loss_rf = train_model(rf, opt_rf, crit, xtr, ytr, num_epochs=epochs)
+    loss_rf = train_model(rf, opt_rf, crit, xtr, ytr, num_epochs=epochs, model_name="RandomForest")
 
     print("Training Soft XGBoost-like...")
-    loss_xgb = train_model(xgb, opt_xgb, crit, xtr, ytr, num_epochs=epochs)
+    loss_xgb = train_model(xgb, opt_xgb, crit, xtr, ytr, num_epochs=epochs, model_name="XGBoost")
 
     # Evaluate base models
     rf_preds, rf_mse, rf_r2 = evaluate_model(rf, xte, yte)
@@ -354,7 +520,7 @@ def main(
     stack = StackingFusionModel(rf, xgb).to(device)
     opt_stack = optim.Adam(stack.parameters(), lr=lr_base)
     print("Training Stacking Fusion Model...")
-    loss_stack = train_model(stack, opt_stack, crit, xtr, ytr, num_epochs=epochs)
+    loss_stack = train_model(stack, opt_stack, crit, xtr, ytr, num_epochs=epochs, model_name="Stacking")
 
     stack_preds, stack_mse, stack_r2 = evaluate_model(stack, xte, yte)
     print(f"Stack Test MSE: {stack_mse:.4f} | R2: {stack_r2:.4f}")
@@ -384,8 +550,8 @@ def main(
     y_max = float(max(y_test.max(), rf_preds.max(), xgb_preds.max(), stack_preds.max()))
     ax2.plot([y_min, y_max], [y_min, y_max], "k--", linewidth=1)
     ax2.set_title("True vs Predicted (Test)")
-    ax2.set_xlabel("True CAPS")
-    ax2.set_ylabel("Predicted CAPS")
+    ax2.set_xlabel("True CAPS Score")
+    ax2.set_ylabel("Predicted CAPS Score")
     ax2.grid(True)
     ax2.legend()
 
@@ -436,6 +602,19 @@ def main(
         print(f"Warning: could not save figures: {e}")
 
     plt.show()
+    
+    # Final summary
+    total_time = time.time() - total_start_time
+    print("\n" + "=" * 70)
+    print("TRAINING COMPLETED SUCCESSFULLY!")
+    print("=" * 70)
+    print(f"Total execution time: {total_time:.1f} seconds ({total_time/60:.1f} minutes)")
+    print(f"Final Results:")
+    print(f"   - RandomForest MSE: {rf_mse:.4f} | R2: {rf_r2:.4f}")
+    print(f"   - XGBoost MSE: {xgb_mse:.4f} | R2: {xgb_r2:.4f}")
+    print(f"   - Stacking MSE: {stack_mse:.4f} | R2: {stack_r2:.4f}")
+    print(f"Best performing model: {'Stacking' if stack_r2 > max(rf_r2, xgb_r2) else 'RandomForest' if rf_r2 > xgb_r2 else 'XGBoost'}")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
