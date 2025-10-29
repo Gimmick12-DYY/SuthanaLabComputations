@@ -238,3 +238,4 @@ if __name__ == "__main__":
     else:
         print("CAPS_score appears to be continuous")
         print("The high R2 might be due to other factors")
+

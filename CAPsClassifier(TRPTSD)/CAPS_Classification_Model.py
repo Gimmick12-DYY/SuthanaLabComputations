@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder, MinMaxScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -85,11 +85,8 @@ def plot_individual_patient_results(combined_df, X, y, model, scaler, patient_in
             "cosinor_mean_acrophase", 
             "cosinor_mean_mesor",
             "linearAR_Daily_Fit", 
-            "linearAR_Weekly_Avg_Daily_Fit", 
-            "linearAR_Predicted", 
             "linearAR_Fit_Residual",
             "Sample Entropy", 
-            "weekly_sampen"
         ]
         
         available_features = [f for f in safe_features if f in patient_df.columns]
@@ -329,11 +326,8 @@ def plot_individual_patient_errors(combined_df, X, y, model, scaler, patient_inf
             "cosinor_mean_acrophase", 
             "cosinor_mean_mesor",
             "linearAR_Daily_Fit", 
-            "linearAR_Weekly_Avg_Daily_Fit", 
-            "linearAR_Predicted", 
             "linearAR_Fit_Residual",
             "Sample Entropy", 
-            "weekly_sampen"
         ]
         
         available_features = [f for f in safe_features if f in patient_df.columns]
@@ -466,11 +460,8 @@ def prepare_features(df):
         "cosinor_mean_acrophase", 
         "cosinor_mean_mesor",
         "linearAR_Daily_Fit", 
-        "linearAR_Weekly_Avg_Daily_Fit", 
-        "linearAR_Predicted", 
         "linearAR_Fit_Residual",
         "Sample Entropy", 
-        "weekly_sampen"
     ]
     
     available_features = [f for f in safe_features if f in df.columns]
@@ -497,8 +488,8 @@ def train_classification_model(X, y, model_name="RandomForest"):
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Scale features
-    scaler = StandardScaler()
+    # Normalize features to 0-1 scale
+    scaler = MinMaxScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
