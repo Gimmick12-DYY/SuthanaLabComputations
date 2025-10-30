@@ -1,0 +1,15 @@
+CAPS Score Classification - Summary Statistics
+============================================================
+
+Overall Accuracy: 0.4051
+Mean Absolute Error: 5.8299
+RMSE: 9.4337
+
+Test Set Size: 18266
+Number of Classes: 43
+Perfect Predictions: 7399 (40.5%)
+
+Error Statistics:
+  Min Error: -46.00
+  Max Error: 49.00
+  Std Error: 9.2585

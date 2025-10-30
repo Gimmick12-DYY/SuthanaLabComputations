@@ -1,0 +1,11 @@
+Feature Group Performance Comparison
+======================================================================
+
+Feature Group   Features   Accuracy     MAE       
+----------------------------------------------------------------------
+LinearAR        4          0.7021       3.1928    
+Entropy         2          0.6481       5.3832    
+Cosinor         6          0.1855       9.8243    
+
+Best Accuracy: LinearAR
+Best MAE: LinearAR
