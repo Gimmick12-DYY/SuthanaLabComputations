@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-CAPS Score Classification Model - Treating CAPS_score as discrete categories
+CAPS Score Classification Model - Top Feature from Each Group
 
-This addresses the issue where CAPS_score has only 18 unique values and should be
-treated as classification rather than regression.
+This classifier automatically identifies the most important feature from each feature group:
+- LinearAR features (temporal patterns)
+- Entropy measures (signal complexity)
+- Cosinor metrics (circadian rhythms)
+
+Then trains a Random Forest classifier using those 3 top features.
+
+This provides a focused, interpretable model with features from each measurement approach.
 """
 
 import pandas as pd
@@ -81,12 +87,9 @@ def plot_individual_patient_results(combined_df, X, y, model, scaler, patient_in
         
         # Prepare features for this patient (same as training)
         safe_features = [
-            "cosinor_mean_amplitude", 
-            "cosinor_mean_acrophase", 
-            "cosinor_mean_mesor",
+            "cosinor_multiday_mesor",
             "linearAR_Daily_Fit", 
-            "linearAR_Fit_Residual",
-            "Sample Entropy", 
+            "weekly_sampen"
         ]
         
         available_features = [f for f in safe_features if f in patient_df.columns]
@@ -451,21 +454,116 @@ def load_all_patient_data():
     combined_df = pd.concat(all_dfs, ignore_index=True)
     return combined_df, patient_info
 
-def prepare_features(df):
-    """Prepare features for classification"""
-    # Use only truly independent features (no data leakage)
-    # Removed low-importance features: Hour_polar, Magnet swipes, Saturations
-    safe_features = [
-        "cosinor_mean_amplitude", 
-        "cosinor_mean_acrophase", 
-        "cosinor_mean_mesor",
-        "linearAR_Daily_Fit", 
-        "linearAR_Fit_Residual",
-        "Sample Entropy", 
-    ]
+def get_top_features_from_groups(df):
+    """Identify top feature from each feature group based on importance"""
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import MinMaxScaler
     
-    available_features = [f for f in safe_features if f in df.columns]
-    X = df[available_features].copy()
+    # Define feature groups (same as feature_group_classifiers.py)
+    FEATURE_GROUPS = {
+        'LinearAR': [
+            'linearAR_Daily_Fit',
+            'linearAR_Weekly_Avg_Daily_Fit',
+            'linearAR_Predicted',
+            'linearAR_Fit_Residual'
+        ],
+        'Entropy': [
+            'Sample Entropy',
+            'weekly_sampen'
+        ],
+        'Cosinor': [
+            'cosinor_multiday_mesor',
+            'cosinor_multiday_amplitude',
+            'cosinor_multiday_acrophase_hours',
+            'cosinor_multiday_r_squared',
+            'cosinor_multiday_r_squared_pct',
+            'cosinor_multiday_n'
+        ]
+    }
+    
+    top_features = []
+    
+    for group_name, feature_list in FEATURE_GROUPS.items():
+        # Get available features for this group
+        available_features = [f for f in feature_list if f in df.columns]
+        
+        if len(available_features) == 0:
+            print(f"  Warning: No features available for {group_name}, skipping...")
+            continue
+        
+        # Prepare features
+        X_group = df[available_features].copy()
+        y = df['CAPS_score'].values.astype(int)
+        
+        # Handle missing values
+        for col in X_group.columns:
+            if X_group[col].isna().any():
+                X_group[col] = X_group[col].fillna(X_group[col].median())
+        
+        # Remove constant features
+        constant_features = [col for col in X_group.columns if X_group[col].nunique() <= 1]
+        if constant_features:
+            X_group = X_group.drop(columns=constant_features)
+        
+        if len(X_group.columns) == 0:
+            continue
+        
+        # Train a model to get feature importance
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_group, y, test_size=0.2, random_state=42, stratify=y
+        )
+        
+        scaler = MinMaxScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        
+        model = RandomForestClassifier(
+            n_estimators=100,
+            random_state=42,
+            max_depth=10,
+            min_samples_split=5,
+            min_samples_leaf=2
+        )
+        model.fit(X_train_scaled, y_train)
+        
+        # Get top feature
+        importance_df = pd.DataFrame({
+            'feature': X_group.columns,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        top_feature = importance_df.iloc[0]['feature']
+        top_importance = importance_df.iloc[0]['importance']
+        top_features.append(top_feature)
+        
+        print(f"  {group_name}: Selected '{top_feature}' (importance: {top_importance:.4f})")
+    
+    return top_features
+
+def prepare_features(df):
+    """Prepare features for classification using top feature from each group"""
+    print("\nIdentifying top features from each feature group...")
+    top_features = get_top_features_from_groups(df)
+    
+    if len(top_features) < 3:
+        print(f"  Warning: Only found {len(top_features)} top features. Using available features.")
+        # Fallback to original features if top feature selection fails
+        safe_features = [
+            "linearAR_Daily_Fit", 
+            "linearAR_Fit_Residual",
+            "Sample Entropy",
+            "cosinor_multiday_r_squared"  # Common fallback
+        ]
+        available_features = [f for f in safe_features if f in df.columns]
+        if len(available_features) == 0:
+            raise ValueError("No suitable features found in dataset")
+        top_features = available_features[:3]  # Use first 3 available
+    
+    print(f"\nUsing {len(top_features)} top features:")
+    for i, feat in enumerate(top_features, 1):
+        print(f"  {i}. {feat}")
+    
+    X = df[top_features].copy()
     y = df['CAPS_score'].values.astype(int)  # Convert to integers for classification
     
     # Handle missing values
@@ -478,6 +576,9 @@ def prepare_features(df):
     if constant_features:
         X = X.drop(columns=constant_features)
         print(f"Removed constant features: {constant_features}")
+    
+    if len(X.columns) == 0:
+        raise ValueError("No valid features remaining after cleaning")
     
     return X, y
 
