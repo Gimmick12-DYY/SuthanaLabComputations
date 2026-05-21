@@ -7,3 +7,9 @@ CAPsClassifier(TRPTSD)/data/
 LogisticRegressionModel(TRPTSD)/outputs/
 LogisticRegressionModel(TRPTSD)/data/
 CAPsClassifier(TRPTSD)/data
+
+# uv / Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
