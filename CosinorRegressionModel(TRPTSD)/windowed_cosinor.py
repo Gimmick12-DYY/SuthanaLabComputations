@@ -23,8 +23,8 @@ Phase stability per series is the amplitude-weighted resultant length R of the
 per-window acrophases (R~1 => locked phase, R~0 => drifting).
 
 Outputs (plots/windowed_cosinor/<signal_kind>/):
-  - <label>_windowed.png             4-panel per series (+ saturation overlay)
-  - comparison_grid_<kind>.png       amplitude(t) & acrophase(t), one row/patient
+  - <label>_windowed.svg             4-panel per series (+ saturation overlay)
+  - comparison_grid_<kind>.svg       amplitude(t) & acrophase(t), one row/patient
   - windowed_fits.csv                one row per (series, window)
   - phase_stability_summary.csv      one row per series
 """
@@ -297,7 +297,7 @@ def main():
         os.makedirs(kind_dir, exist_ok=True)
         sig_desc = f"{s['signal_kind']} / {s['pattern_col']}"
         plot_series(s["label"], sig_desc, win_df, summ, s["sat_frac"],
-                    os.path.join(kind_dir, f"{s['label']}_windowed.png"))
+                    os.path.join(kind_dir, f"{s['label']}_windowed.svg"))
         results.append({**s, "win_df": win_df, "summ": summ})
         print(f"[ok] {s['label']:14s} {s['signal_kind']:9s} "
               f"win={summ['n_windows']:4d}  med_amp={summ['median_amp']:6.2f}  "
@@ -310,9 +310,9 @@ def main():
                  key=lambda r: r["patient"])
     rx = sorted([r for r in results if r["signal_kind"] == "stim_rx"],
                 key=lambda r: r["patient"])
-    plot_comparison_grid(det, os.path.join(OUT_DIR, "comparison_grid_detection.png"),
+    plot_comparison_grid(det, os.path.join(OUT_DIR, "comparison_grid_detection.svg"),
                          "detections (representative detector per patient)")
-    plot_comparison_grid(rx, os.path.join(OUT_DIR, "comparison_grid_stim_rx.png"),
+    plot_comparison_grid(rx, os.path.join(OUT_DIR, "comparison_grid_stim_rx.svg"),
                          "Episode starts with RX")
 
     # CSVs

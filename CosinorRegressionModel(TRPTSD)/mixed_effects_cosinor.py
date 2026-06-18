@@ -29,9 +29,9 @@ IMPORTANT caveats (stated, not hidden):
     patients (A_B2, G_A2).  The BLUP deviations + PLI make this explicit.
 
 Outputs (plots/mixed_effects_cosinor/):
-  - population_waveform.png   pop 1-/2-harmonic 24-h shape + per-patient curves
-  - acrophase_clock.png       per-patient 24-h acrophase vectors + population
-  - amplitude_forest.png      static A24 (data, Layer 2 CI) vs shrunken BLUP
+  - population_waveform.svg   pop 1-/2-harmonic 24-h shape + per-patient curves
+  - acrophase_clock.svg       per-patient 24-h acrophase vectors + population
+  - amplitude_forest.svg      static A24 (data, Layer 2 CI) vs shrunken BLUP
   - mixedlm_summary.txt       full model summary
   - patient_effects.csv       per-patient population+random -> amp/acro, joined
                               with Layer 1/2 metrics
@@ -291,10 +291,10 @@ def run_signal_kind(signal_kind: str):
     kind_title = ("detections (representative detector)" if signal_kind == "detection"
                   else "Episode starts with RX")
     plot_population_waveform(mdf, pat_eff,
-                             os.path.join(out_dir, "population_waveform.png"))
-    plot_acrophase_clock(pat_eff, pop, os.path.join(out_dir, "acrophase_clock.png"))
+                             os.path.join(out_dir, "population_waveform.svg"))
+    plot_acrophase_clock(pat_eff, pop, os.path.join(out_dir, "acrophase_clock.svg"))
     if pat_eff["static_A24"].notna().any():
-        plot_amplitude_forest(pat_eff, pop, os.path.join(out_dir, "amplitude_forest.png"))
+        plot_amplitude_forest(pat_eff, pop, os.path.join(out_dir, "amplitude_forest.svg"))
 
     pat_eff.to_csv(os.path.join(out_dir, "patient_effects.csv"), index=False)
     pd.DataFrame([{"signal_kind": signal_kind, **pop}]).to_csv(

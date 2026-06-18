@@ -18,8 +18,8 @@ Compares a one-harmonic (24 h only) fit against the two-harmonic fit
 via a nested F-test on the 12-h component.
 
 Outputs:
-  - plots/two_harmonic_cosinor/<patient>_fit.png  (4-panel diagnostic)
-  - plots/two_harmonic_cosinor/comparison_grid.png
+  - plots/two_harmonic_cosinor/<patient>_fit.svg  (4-panel diagnostic)
+  - plots/two_harmonic_cosinor/comparison_grid.svg
   - plots/two_harmonic_cosinor/fit_summary.csv
 """
 
@@ -342,13 +342,13 @@ def main():
         fit = fit_cosinor(name, t_h, y_dt)
         fits.append(fit)
 
-        out_path = os.path.join(OUT_DIR, f"{name}_fit.png")
+        out_path = os.path.join(OUT_DIR, f"{name}_fit.svg")
         plot_patient_fit(fit, sig_col, out_path)
         print(f"[ok] {name}  R²(1)={fit.r2_one:.3f}  R²(2)={fit.r2_two:.3f}  "
               f"ΔR²={fit.r2_two - fit.r2_one:.3f}  "
               f"p(12h)={fit.p_value_12h:.2e}  -> {out_path}")
 
-    grid_path = os.path.join(OUT_DIR, "comparison_grid.png")
+    grid_path = os.path.join(OUT_DIR, "comparison_grid.svg")
     plot_comparison_grid(fits, grid_path)
     csv_path = os.path.join(OUT_DIR, "fit_summary.csv")
     save_summary_csv(fits, csv_path)

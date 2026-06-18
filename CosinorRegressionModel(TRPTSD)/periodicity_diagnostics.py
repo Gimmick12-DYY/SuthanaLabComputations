@@ -256,7 +256,7 @@ def main():
         kind_dir = os.path.join(OUT_DIR, s["signal_kind"])
         os.makedirs(kind_dir, exist_ok=True)
         sig_desc = f"{s['signal_kind']} / {s['pattern_col']}  (sat {s['sat_frac']*100:.0f}%)"
-        out_path = os.path.join(kind_dir, f"{s['label']}_followup.png")
+        out_path = os.path.join(kind_dir, f"{s['label']}_followup.svg")
         plot_patient(s["label"], df, sig_desc, out_path)
         by_kind.setdefault(s["signal_kind"], []).append((s, df))
         print(f"[ok] {s['label']:14s} {s['signal_kind']:9s} -> {out_path}")
@@ -267,7 +267,7 @@ def main():
         entries = sorted(entries, key=lambda e: e[0]["patient"])
         patient_data = [(s["label"], df, s["pattern_col"]) for (s, df) in entries]
         for transform in ("raw", "log1p"):
-            grid = os.path.join(OUT_DIR, f"comparison_grid_{kind}_{transform}.png")
+            grid = os.path.join(OUT_DIR, f"comparison_grid_{kind}_{transform}.svg")
             plot_comparison_grid(patient_data, grid, transform)
         print(f"[ok] {kind} comparison grids -> {OUT_DIR}")
 

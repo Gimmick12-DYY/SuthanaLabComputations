@@ -27,8 +27,8 @@ For each statistic: p = (1 + #{null >= observed}) / (B + 1).
 Observed amplitudes also get a moving-block-bootstrap 95% CI.
 
 Outputs (plots/rhythmicity_test/):
-  - <patient>_nulltest.png    null histograms with observed lines
-  - summary_grid.png          all patients
+  - <patient>_nulltest.svg    null histograms with observed lines
+  - summary_grid.svg          all patients
   - rhythmicity_summary.csv
 """
 
@@ -299,7 +299,7 @@ def main():
         results.append(res)
         kind_dir = os.path.join(OUT_DIR, s["signal_kind"])
         os.makedirs(kind_dir, exist_ok=True)
-        plot_patient(res, os.path.join(kind_dir, f"{s['label']}_nulltest.png"))
+        plot_patient(res, os.path.join(kind_dir, f"{s['label']}_nulltest.svg"))
         print(f"[ok] {res['label']:14s} {res['signal_kind']:9s} "
               f"rho={res['ar1_rho']:.3f}  "
               f"A24={res['static_A24']:6.2f}(p={res['p_static_A24']:.3g})  "
@@ -314,9 +314,9 @@ def main():
     rx = sorted([r for r in results if r["signal_kind"] == "stim_rx"],
                 key=lambda r: r["patient"])
     if det:
-        plot_summary_grid(det, os.path.join(OUT_DIR, "summary_grid_detection.png"))
+        plot_summary_grid(det, os.path.join(OUT_DIR, "summary_grid_detection.svg"))
     if rx:
-        plot_summary_grid(rx, os.path.join(OUT_DIR, "summary_grid_stim_rx.png"))
+        plot_summary_grid(rx, os.path.join(OUT_DIR, "summary_grid_stim_rx.svg"))
 
     cols = ["label", "patient", "signal_kind", "detector", "signal_col",
             "is_representative", "sat_frac", "ar1_rho",
