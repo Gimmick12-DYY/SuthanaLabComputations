@@ -19,7 +19,6 @@ plots/periodicity_followup/.
 from __future__ import annotations
 
 import os
-import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -27,8 +26,9 @@ from matplotlib.colors import Normalize
 from scipy.signal import lombscargle
 from statsmodels.tsa.stattools import acf
 
+import rns_signals as rns
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(HERE, "data", "Data_Cosinor_09.15.25")
 OUT_DIR = os.path.join(HERE, "plots", "periodicity_followup")
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -38,16 +38,6 @@ LS_PERIOD_MIN_H = 2.0
 LS_PERIOD_MAX_H = 24 * 14
 LS_N_FREQS = 4000
 HEATMAP_BIN_DAYS = 7                   # one row per 7-day chunk
-
-
-def load_patient(csv_path: str) -> tuple[str, pd.DataFrame, str]:
-    name = os.path.basename(csv_path).replace("_Full_output.csv", "")
-    df = pd.read_csv(csv_path)
-    sig_col = [c for c in df.columns if c.startswith("Pattern")][0]
-    df = df[["Region start time", sig_col]].copy()
-    df["t"] = pd.to_datetime(df["Region start time"])
-    df = df.rename(columns={sig_col: "y"}).sort_values("t").reset_index(drop=True)
-    return name, df[["t", "y"]], sig_col
 
 
 def detrend_rolling(y: pd.Series, window_h: int = DETREND_WINDOW_H) -> pd.Series:
@@ -258,23 +248,28 @@ def plot_comparison_grid(patient_data, out_path: str, transform: str):
 
 
 def main():
-    csvs = sorted(glob.glob(os.path.join(DATA_DIR, "*_Full_output.csv")))
-    if not csvs:
-        raise SystemExit(f"No CSVs found in {DATA_DIR}")
+    by_kind = {}
+    for s in rns.iter_series():
+        df = s["data"].copy()
+        if df["y"].notna().sum() < 48:
+            continue
+        kind_dir = os.path.join(OUT_DIR, s["signal_kind"])
+        os.makedirs(kind_dir, exist_ok=True)
+        sig_desc = f"{s['signal_kind']} / {s['pattern_col']}  (sat {s['sat_frac']*100:.0f}%)"
+        out_path = os.path.join(kind_dir, f"{s['label']}_followup.png")
+        plot_patient(s["label"], df, sig_desc, out_path)
+        by_kind.setdefault(s["signal_kind"], []).append((s, df))
+        print(f"[ok] {s['label']:14s} {s['signal_kind']:9s} -> {out_path}")
 
-    patient_data = []
-    for path in csvs:
-        name, df, sig_col = load_patient(path)
-        patient_data.append((name, df, sig_col))
-        out_path = os.path.join(OUT_DIR, f"{name}_followup.png")
-        plot_patient(name, df, sig_col, out_path)
-        print(f"[ok] {name}  -> {out_path}")
-
-    grid_raw = os.path.join(OUT_DIR, "comparison_grid_raw.png")
-    grid_log = os.path.join(OUT_DIR, "comparison_grid_log1p.png")
-    plot_comparison_grid(patient_data, grid_raw, "raw")
-    plot_comparison_grid(patient_data, grid_log, "log1p")
-    print(f"[ok] comparison grids -> {grid_raw}\n                        {grid_log}")
+    for kind, entries in by_kind.items():
+        if kind == "detection":
+            entries = [(s, df) for (s, df) in entries if s["is_representative"]]
+        entries = sorted(entries, key=lambda e: e[0]["patient"])
+        patient_data = [(s["label"], df, s["pattern_col"]) for (s, df) in entries]
+        for transform in ("raw", "log1p"):
+            grid = os.path.join(OUT_DIR, f"comparison_grid_{kind}_{transform}.png")
+            plot_comparison_grid(patient_data, grid, transform)
+        print(f"[ok] {kind} comparison grids -> {OUT_DIR}")
 
 
 if __name__ == "__main__":

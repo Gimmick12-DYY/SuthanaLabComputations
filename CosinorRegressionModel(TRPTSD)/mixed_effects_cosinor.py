@@ -41,15 +41,14 @@ Outputs (plots/mixed_effects_cosinor/):
 from __future__ import annotations
 
 import os
-import glob
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.formula.api as smf
 
+import rns_signals as rns
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(HERE, "data", "Data_Cosinor_09.15.25")
 OUT_DIR = os.path.join(HERE, "plots", "mixed_effects_cosinor")
 L1_CSV = os.path.join(HERE, "plots", "windowed_cosinor", "phase_stability_summary.csv")
 L2_CSV = os.path.join(HERE, "plots", "rhythmicity_test", "rhythmicity_summary.csv")
@@ -58,16 +57,6 @@ os.makedirs(OUT_DIR, exist_ok=True)
 DETREND_WINDOW_H = 24 * 7
 W24 = 2 * np.pi / 24.0
 W12 = 2 * np.pi / 12.0
-
-
-def load_patient(csv_path: str):
-    name = os.path.basename(csv_path).replace("_Full_output.csv", "")
-    df = pd.read_csv(csv_path)
-    sig_col = [c for c in df.columns if c.startswith("Pattern")][0]
-    df = df[["Region start time", sig_col]].copy()
-    df["t"] = pd.to_datetime(df["Region start time"])
-    df = df.rename(columns={sig_col: "y"}).sort_values("t").reset_index(drop=True)
-    return name, df[["t", "y"]], sig_col
 
 
 def detrend_rolling(y: pd.Series, window_h: int = DETREND_WINDOW_H) -> pd.Series:
@@ -83,22 +72,29 @@ def amp_acro(b, g, period_h):
     return amp, acro
 
 
-def build_long_df():
-    csvs = sorted(glob.glob(os.path.join(DATA_DIR, "*_Full_output.csv")))
-    if not csvs:
-        raise SystemExit(f"No CSVs found in {DATA_DIR}")
+def build_long_df(signal_kind: str):
+    """Pool all patients for one signal kind.
+
+    For 'detection' we take each patient's representative detector (one series
+    per patient); for 'stim_rx' the single RX series.  Returns (data, label_map)
+    where label_map[patient] is the series label used.
+    """
     frames = []
-    for path in csvs:
-        name, df, _ = load_patient(path)
+    label_map = {}
+    for s in rns.iter_series(signal_set=(signal_kind,)):
+        if signal_kind == "detection" and not s["is_representative"]:
+            continue
+        df = s["data"]
         th = (df["t"] - df["t"].iloc[0]).dt.total_seconds().to_numpy() / 3600.0
         y_dt = detrend_rolling(df["y"]).to_numpy()
         sub = pd.DataFrame({
-            "patient": name, "y": y_dt,
+            "patient": s["patient"], "y": y_dt,
             "cos24": np.cos(W24 * th), "sin24": np.sin(W24 * th),
             "cos12": np.cos(W12 * th), "sin12": np.sin(W12 * th),
         }).dropna(subset=["y"])
         frames.append(sub)
-    return pd.concat(frames, ignore_index=True)
+        label_map[s["patient"]] = s["label"]
+    return pd.concat(frames, ignore_index=True), label_map
 
 
 def fit_mixed(data):
@@ -244,53 +240,74 @@ def plot_amplitude_forest(pat_eff, pop, out_path):
 
 # -------------------------- main -------------------------- #
 
-def main():
-    data = build_long_df()
+def _join_layers(pat_eff, signal_kind):
+    """Merge Layer 1 (phase stability) and Layer 2 (AR(1) test) for this kind."""
+    for col in ["resultant_R", "mean_acro_h", "median_amp",
+                "static_A24", "static_A24_ci_lo", "static_A24_ci_hi",
+                "phase_locking_index", "p_static_A24", "p_windowed_A24"]:
+        pat_eff[col] = np.nan
+    if os.path.exists(L1_CSV):
+        l1 = pd.read_csv(L1_CSV)
+        l1 = l1[l1["signal_kind"] == signal_kind]
+        if signal_kind == "detection":
+            l1 = l1[l1["is_representative"]]
+        pat_eff = pat_eff.drop(columns=["resultant_R", "mean_acro_h", "median_amp"]).merge(
+            l1[["patient", "resultant_R", "mean_acro_h", "median_amp"]],
+            on="patient", how="left")
+    if os.path.exists(L2_CSV):
+        l2 = pd.read_csv(L2_CSV)
+        l2 = l2[l2["signal_kind"] == signal_kind]
+        if signal_kind == "detection":
+            l2 = l2[l2["is_representative"]]
+        pat_eff = pat_eff.drop(columns=[
+            "static_A24", "static_A24_ci_lo", "static_A24_ci_hi",
+            "phase_locking_index", "p_static_A24", "p_windowed_A24"]).merge(
+            l2[["patient", "static_A24", "static_A24_ci_lo", "static_A24_ci_hi",
+                "phase_locking_index", "p_static_A24", "p_windowed_A24"]],
+            on="patient", how="left")
+    return pat_eff
+
+
+def run_signal_kind(signal_kind: str):
+    data, label_map = build_long_df(signal_kind)
     patients = sorted(data["patient"].unique())
-    print(f"[info] long df: {len(data)} rows, {len(patients)} patients")
+    out_dir = os.path.join(OUT_DIR, signal_kind)
+    os.makedirs(out_dir, exist_ok=True)
+    print(f"[info] {signal_kind}: {len(data)} rows, {len(patients)} patients "
+          f"({', '.join(label_map[p] for p in patients)})")
 
     mdf = fit_mixed(data)
-    with open(os.path.join(OUT_DIR, "mixedlm_summary.txt"), "w") as fh:
+    with open(os.path.join(out_dir, "mixedlm_summary.txt"), "w") as fh:
         fh.write(mdf.summary().as_text())
 
     pop = population_summary(mdf)
     pat_eff = patient_effects(mdf, patients)
-
-    # cos/sin of each patient's fixed+random 24h coefficients for waveform plot
+    pat_eff["label"] = pat_eff["patient"].map(label_map)
     fe = mdf.fe_params
     pat_eff["blup_A24_cos"] = fe["cos24"] + pat_eff["re_cos24"]
     pat_eff["blup_A24_sin"] = fe["sin24"] + pat_eff["re_sin24"]
+    pat_eff = _join_layers(pat_eff, signal_kind)
 
-    # join Layer 1 (phase stability) and Layer 2 (static A24 + PLI + CI)
-    if os.path.exists(L1_CSV):
-        l1 = pd.read_csv(L1_CSV)[["patient", "resultant_R", "mean_acro_h",
-                                  "median_amp"]]
-        pat_eff = pat_eff.merge(l1, on="patient", how="left")
-    else:
-        pat_eff["resultant_R"] = np.nan
-    if os.path.exists(L2_CSV):
-        l2 = pd.read_csv(L2_CSV)[["patient", "static_A24", "static_A24_ci_lo",
-                                  "static_A24_ci_hi", "phase_locking_index",
-                                  "p_static_A24", "p_windowed_A24"]]
-        pat_eff = pat_eff.merge(l2, on="patient", how="left")
-    else:
-        for c in ["static_A24", "static_A24_ci_lo", "static_A24_ci_hi",
-                  "phase_locking_index"]:
-            pat_eff[c] = np.nan
-
-    plot_population_waveform(mdf, pat_eff, os.path.join(OUT_DIR, "population_waveform.png"))
-    plot_acrophase_clock(pat_eff, pop, os.path.join(OUT_DIR, "acrophase_clock.png"))
+    kind_title = ("detections (representative detector)" if signal_kind == "detection"
+                  else "Episode starts with RX")
+    plot_population_waveform(mdf, pat_eff,
+                             os.path.join(out_dir, "population_waveform.png"))
+    plot_acrophase_clock(pat_eff, pop, os.path.join(out_dir, "acrophase_clock.png"))
     if pat_eff["static_A24"].notna().any():
-        plot_amplitude_forest(pat_eff, pop, os.path.join(OUT_DIR, "amplitude_forest.png"))
+        plot_amplitude_forest(pat_eff, pop, os.path.join(out_dir, "amplitude_forest.png"))
 
-    pat_eff.to_csv(os.path.join(OUT_DIR, "patient_effects.csv"), index=False)
-    pd.DataFrame([pop]).to_csv(os.path.join(OUT_DIR, "population_summary.csv"), index=False)
+    pat_eff.to_csv(os.path.join(out_dir, "patient_effects.csv"), index=False)
+    pd.DataFrame([{"signal_kind": signal_kind, **pop}]).to_csv(
+        os.path.join(out_dir, "population_summary.csv"), index=False)
 
-    print("[ok] population 24-h: A={:.2f}  acro={:.1f} h  |  12-h: A={:.2f}  acro={:.1f} h"
-          .format(pop["pop_A24"], pop["pop_acro24_h"], pop["pop_A12"], pop["pop_acro12_h"]))
-    print("[ok] RE var (cos24/sin24): {:.1f} / {:.1f}   resid var {:.1f}"
-          .format(pop["re_var_cos24"], pop["re_var_sin24"], pop["resid_var"]))
-    print(f"[ok] outputs -> {OUT_DIR}")
+    print(f"[ok] {signal_kind} ({kind_title}) population 24-h: A={pop['pop_A24']:.2f}  "
+          f"acro={pop['pop_acro24_h']:.1f} h  |  12-h: A={pop['pop_A12']:.2f}  "
+          f"acro={pop['pop_acro12_h']:.1f} h  -> {out_dir}")
+
+
+def main():
+    for signal_kind in ("detection", "stim_rx"):
+        run_signal_kind(signal_kind)
 
 
 if __name__ == "__main__":

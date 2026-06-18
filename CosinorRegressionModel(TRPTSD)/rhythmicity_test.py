@@ -35,15 +35,15 @@ Outputs (plots/rhythmicity_test/):
 from __future__ import annotations
 
 import os
-import glob
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter
 
+import rns_signals as rns
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(HERE, "data", "Data_Cosinor_09.15.25")
 OUT_DIR = os.path.join(HERE, "plots", "rhythmicity_test")
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -51,7 +51,7 @@ DETREND_WINDOW_H = 24 * 7
 WINDOW_DAYS = 3
 STEP_DAYS = 1
 MIN_FRAC_PRESENT = 0.5
-N_SURROGATE = 999
+N_SURROGATE = 499              # per-series; 24 series, so keep moderate (p floor 0.002)
 N_BOOTSTRAP = 300
 BLOCK_H = 24
 RNG = np.random.default_rng(0)
@@ -60,17 +60,7 @@ W24 = 2 * np.pi / 24.0
 W12 = 2 * np.pi / 12.0
 
 
-# -------------------------- data + detrend -------------------------- #
-
-def load_patient(csv_path: str):
-    name = os.path.basename(csv_path).replace("_Full_output.csv", "")
-    df = pd.read_csv(csv_path)
-    sig_col = [c for c in df.columns if c.startswith("Pattern")][0]
-    df = df[["Region start time", sig_col]].copy()
-    df["t"] = pd.to_datetime(df["Region start time"])
-    df = df.rename(columns={sig_col: "y"}).sort_values("t").reset_index(drop=True)
-    return name, df[["t", "y"]], sig_col
-
+# -------------------------- detrend -------------------------- #
 
 def detrend_rolling(y: pd.Series, window_h: int = DETREND_WINDOW_H) -> pd.Series:
     trend = y.rolling(window=window_h, min_periods=window_h // 4, center=True).mean()
@@ -165,7 +155,8 @@ def moving_block_bootstrap_ci(t_hours, y, statistic):
 
 # -------------------------- per-patient test -------------------------- #
 
-def test_patient(name, df, sig_col):
+def test_series(s):
+    df = s["data"]
     t0 = df["t"].iloc[0]
     t_h = (df["t"] - t0).dt.total_seconds().to_numpy() / 3600.0
     y_dt = detrend_rolling(df["y"]).to_numpy()
@@ -209,7 +200,10 @@ def test_patient(name, df, sig_col):
     pli = (a24_obs / wmed_obs) if (np.isfinite(a24_obs) and wmed_obs > 0) else np.nan
 
     return {
-        "patient": name, "signal_col": sig_col,
+        "patient": s["patient"], "label": s["label"],
+        "signal_kind": s["signal_kind"], "detector": s["detector"],
+        "signal_col": s["pattern_col"], "sat_frac": s["sat_frac"],
+        "is_representative": s["is_representative"],
         "ar1_rho": rho,
         "static_A24": a24_obs, "static_A24_ci_lo": a24_lo, "static_A24_ci_hi": a24_hi,
         "p_static_A24": p24,
@@ -250,8 +244,10 @@ def plot_patient(res, out_path):
     for ax in axes:
         ax.set_xlabel("amplitude")
     fig.suptitle(
-        f"AR(1) rhythmicity test — {res['patient']}  |  {res['signal_col']}  |  "
-        f"rho={res['ar1_rho']:.3f}  |  {N_SURROGATE} surrogates", fontsize=12)
+        f"AR(1) rhythmicity test — {res['label']}  |  {res['signal_kind']} / "
+        f"{res['signal_col']}  |  rho={res['ar1_rho']:.3f}  |  "
+        f"{N_SURROGATE} surrogates  |  saturated {res['sat_frac']*100:.0f}%",
+        fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -265,9 +261,9 @@ def plot_summary_grid(results, out_path):
     for i, res in enumerate(results):
         _null_panel(axes[i, 0], res["_null_a24"], res["static_A24"],
                     (res["static_A24_ci_lo"], res["static_A24_ci_hi"]),
-                    f"{res['patient']}  static A24 (p={res['p_static_A24']:.3g})", "C0")
+                    f"{res['label']}  static A24 (p={res['p_static_A24']:.3g})", "C0")
         _null_panel(axes[i, 1], res["_null_wmed"], res["windowed_median_A24"], None,
-                    f"{res['patient']}  windowed-median A24 (p={res['p_windowed_A24']:.3g})",
+                    f"{res['label']}  windowed-median A24 (p={res['p_windowed_A24']:.3g})",
                     "C2")
     for ax in axes[-1]:
         ax.set_xlabel("amplitude")
@@ -280,42 +276,58 @@ def plot_summary_grid(results, out_path):
 
 # -------------------------- main -------------------------- #
 
+def _verdict(res):
+    rhythmic = (res["p_static_A24"] < 0.05) or (res["p_windowed_A24"] < 0.05)
+    pli = res["phase_locking_index"]
+    if not rhythmic:
+        return "no rhythm above red noise"
+    if not np.isfinite(pli):
+        return "rhythmic"
+    if pli >= 0.6:
+        return "phase-locked rhythm"
+    if pli < 0.4:
+        return "phase-drifting rhythm"
+    return "partially phase-locked"
+
+
 def main():
-    csvs = sorted(glob.glob(os.path.join(DATA_DIR, "*_Full_output.csv")))
-    if not csvs:
-        raise SystemExit(f"No CSVs found in {DATA_DIR}")
-
     results = []
-    for path in csvs:
-        name, df, sig_col = load_patient(path)
-        res = test_patient(name, df, sig_col)
+    for s in rns.iter_series():
+        if s["data"]["y"].notna().sum() < WINDOW_DAYS * 24:
+            continue
+        res = test_series(s)
         results.append(res)
-        plot_patient(res, os.path.join(OUT_DIR, f"{name}_nulltest.png"))
-        rhythmic = (res["p_static_A24"] < 0.05) or (res["p_windowed_A24"] < 0.05)
-        pli = res["phase_locking_index"]
-        if not rhythmic:
-            verdict = "no rhythm above red noise"
-        elif pli >= 0.6:
-            verdict = "phase-locked rhythm"
-        elif pli < 0.4:
-            verdict = "phase-drifting rhythm"
-        else:
-            verdict = "partially phase-locked"
-        print(f"[ok] {name}  rho={res['ar1_rho']:.3f}  "
-              f"static_A24={res['static_A24']:.2f} (p={res['p_static_A24']:.3g})  "
-              f"win_med_A24={res['windowed_median_A24']:.2f} "
-              f"(p={res['p_windowed_A24']:.3g})  PLI={pli:.2f}  -> {verdict}")
+        kind_dir = os.path.join(OUT_DIR, s["signal_kind"])
+        os.makedirs(kind_dir, exist_ok=True)
+        plot_patient(res, os.path.join(kind_dir, f"{s['label']}_nulltest.png"))
+        print(f"[ok] {res['label']:14s} {res['signal_kind']:9s} "
+              f"rho={res['ar1_rho']:.3f}  "
+              f"A24={res['static_A24']:6.2f}(p={res['p_static_A24']:.3g})  "
+              f"winA24={res['windowed_median_A24']:6.2f}(p={res['p_windowed_A24']:.3g})  "
+              f"PLI={res['phase_locking_index'] if np.isfinite(res['phase_locking_index']) else float('nan'):.2f}  "
+              f"sat={res['sat_frac']*100:3.0f}%  -> {_verdict(res)}")
 
-    plot_summary_grid(results, os.path.join(OUT_DIR, "summary_grid.png"))
+    # summary grids per signal kind (detection: representative detector only)
+    det = sorted([r for r in results
+                  if r["signal_kind"] == "detection" and r["is_representative"]],
+                 key=lambda r: r["patient"])
+    rx = sorted([r for r in results if r["signal_kind"] == "stim_rx"],
+                key=lambda r: r["patient"])
+    if det:
+        plot_summary_grid(det, os.path.join(OUT_DIR, "summary_grid_detection.png"))
+    if rx:
+        plot_summary_grid(rx, os.path.join(OUT_DIR, "summary_grid_stim_rx.png"))
 
-    cols = ["patient", "signal_col", "ar1_rho",
+    cols = ["label", "patient", "signal_kind", "detector", "signal_col",
+            "is_representative", "sat_frac", "ar1_rho",
             "static_A24", "static_A24_ci_lo", "static_A24_ci_hi", "p_static_A24",
             "static_A12", "p_static_A12",
             "windowed_median_A24", "p_windowed_A24", "phase_locking_index"]
     df_out = pd.DataFrame([{k: r[k] for k in cols} for r in results])
+    df_out["verdict"] = [_verdict(r) for r in results]
     csv_path = os.path.join(OUT_DIR, "rhythmicity_summary.csv")
     df_out.to_csv(csv_path, index=False)
-    print(f"[ok] summary csv -> {csv_path}")
+    print(f"[ok] {len(results)} series -> {csv_path}")
 
 
 if __name__ == "__main__":
